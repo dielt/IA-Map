@@ -1,0 +1,7 @@
+*.o
+*.hi
+*.exe
+*.aux
+*.hp
+*.ps
+*.log
