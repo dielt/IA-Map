@@ -141,6 +141,21 @@ joinTuple x = let
 \end{code}
 
 
+More Mathematical style sums and products, sequence style
+\begin{code}
+
+sumSeq :: (Enum a,Num b) => (a -> b) -> a -> a -> b
+sumSeq f i n = sum [(f x) | x <- [i..n] ] 
+
+prodSeq :: (Enum a,Num b) => (a -> b) -> a -> a -> b
+prodSeq f i n = product [(f x) | x <- [i..n] ] 
+
+foldSeq :: (Enum a) => (b -> c -> c) -> c -> (a -> b) -> a -> a -> c
+foldSeq g z f i n = foldr g z [f x | x <- [i..n]]
+
+
+\end{code}
+
 
 
 
