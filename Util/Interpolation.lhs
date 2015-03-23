@@ -7,6 +7,7 @@ import Util.Base
 
 import qualified Math.Polynomial as P
 import Control.Monad
+import Data.List
 
 
 \end{code}
@@ -25,6 +26,14 @@ linearExtrapolation (x,y) slope x' = y + (x' - x)*slope
 linearIntrp :: Fractional a => (a,a) -> (a,a) -> a -> a
 linearIntrp pnt1 pnt2 x' = linearExtrapolation pnt1 (linearSlope pnt1 pnt2 ) x'
 
+linear :: (Fractional a,Eq a) => (a,a) -> (a,a) -> P.Poly a
+linear (u,v) y = 
+	let 
+		a = linearSlope (u,v) y 
+		b = v - a*u
+	in P.addPoly (P.scalePoly a P.x) (P.constPoly b)
+	
+
 --
 --linear fit by least square
 --linearFit :: (Eq a , Fractional a) => [(a,a)] -> P.Poly a
@@ -32,9 +41,9 @@ linearFit :: (Eq a , Fractional a) => [(a,a)] -> P.Poly a
 linearFit points = 
 	let 
 		(x',y') = centerFit points
-		b = (sum . map (\(a,b) -> (a - x')*(b - y') ) $ points) / (sum . map (\a -> (a - x')^2 ) . map snd $ points )
-		a = y' - b*x'
-	in P.addPoly (P.scalePoly b P.x) (P.constPoly a)
+		a = (sum . map (\(u,v) -> (u - x')*(v - y') ) $ points) / (sum . map (\u -> (u - x')^2 ) . map snd $ points )
+		b = y' - a*x'
+	in P.addPoly (P.scalePoly a P.x) (P.constPoly b)
 	
 
 centerFit :: Fractional a => [(a,a)] -> (a,a)
@@ -44,7 +53,7 @@ centerFit points = (  (sum (map fst points)) / ( fromIntegral $ length points) ,
 
 
 
-n-th degree polynomials, lagrange method
+n-th degree polynomials for (n+1) points, lagrange method
 NB use only for small n, large n leads to extreme behavior.
 \begin{code}
 
@@ -103,10 +112,60 @@ splineToPoly s x = foldr (\(test,p) y -> if test x then y `mplus` (return p) els
 
 \end{code}
 
+Note all of these splines operate under the assumption that the points have been ordered with repsect to x 
+
+Linear
+Continuous
+\begin{code}
+
+containmentTest :: Ord a => (a,a) -> (a,a) -> (a -> Bool)
+containmentTest (x,y) (u,v) = \t -> (x <= t) && (t <= u)
+
+--note this currently does not extrapolate beyond the bounds of 
+linearSpline :: (Ord a , Fractional a) => [(a,a)] -> Spline a--foldl' due to the importance of ordering.
+linearSpline (x:xs) = snd $ foldl' f (x,[]) xs 
+	where
+		--f :: ((a,a),Spline a) -> (a,a) -> ((a,a),Spline a)
+		f  (u,s) v = ( v ,(containmentTest u v , linear u v ) : s)
+linearSpline _ = [] 
+
+\end{code}
+
+Quadratic
+Continuous first derivatives
+\begin{code}
+
+quadraticSpline :: (Ord a , Fractional a) => [(a,a)] -> Spline a
+quadraticSpline (x:y:ys) = snd $ foldl' f (y,[(containmentTest x y , linear x y)]) ys
+	where
+		--f::((a,a),Spline a) -> (a,a) -> ((a,a),Spline a)
+		f (u,s) v = ( v ,(containmentTest u v , p ) : s)
+			where --see below -- this could be cleaned up
+				dsu = ( P.evalPoly (P.polyDeriv . snd . head $ s) (fst u) ) 
+				a = ((fst u)*dsu - dsu*(fst v) - (snd u) + (snd v))/((fst u)-(fst v))^2
+				b = (-(dsu)*(fst u)^2 +2*(fst u)*(snd u) - 2*(fst u)*(snd v) + dsu*(fst v)^2)/((fst u)-(fst v))^2
+				c = (dsu*(fst v)*(fst u)^2+(snd v)*(fst u)^2-(fst u)*dsu*(fst v)^2 - 2*(fst u)*(snd u)*(fst v) + (snd u)*(fst v)^2)/((fst u)-(fst v))^2
+				p = P.sumPolys [  P.scalePoly a $ P.multPoly P.x P.x  , P.scalePoly b P.x ,  P.constPoly c ]
+quadraticSpline _ = []
+				
+{-- dsu = derivative of of the previous qudratic when evaluated at u
+2*a(fst u) + b = dsu
+a(fst u)^2 + b(fst u) + c = (snd u)
+a(fst v)^2 + b(fst v) + c = (snd v)
+=> By wolfram alpha
+Where (fst u) /= (fst v)  
+a = ((fst u)*dsu - dsu*(fst v) - (snd u) + (snd v))/((fst u)-(fst v))^2,   
+b = (-(dsu)*(fst u)^2 +2*(fst u)*(snd u) - 2*(fst u)*(snd v) + dsu*(fst v)^2)/((fst u)-(fst v))^2,   
+c = (dsu*(fst v)*(fst u)^2+(snd v)*(fst u)^2-(fst u)*dsu*(fst v)^2 - 2*(fst u)*(snd u)*(fst v) + (snd u)*(fst v)^2)/((fst u)-(fst v))^2
+=> 
+--}		
+				
+				
+quadraticSpline _ = []
 
 
 
-
+\end{code}
 
 
 
