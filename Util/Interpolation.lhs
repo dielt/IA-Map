@@ -217,6 +217,47 @@ d = -(((fst u)^3)*((-2)*(snd v) - 2*(ddsu)*(fst v)^2 - 4*(dsu)*(fst v)) + (fst u
 
 \end{code}
 
+FlatCubic
+Here we assume a zero derivative at every given point
+\begin{code}
+
+flatCubicSpline :: (Ord a , Fractional a) => [(a,a)] -> Spline a
+flatCubicSpline (x:y:ys) = snd $ foldl' f (x,[]) (y:ys)
+	where --f::((a,a),Spline a) -> (a,a) -> ((a,a),Spline a)
+		f (u,s) v = ( v ,(containmentTest u v , p ) : s)
+			where --from above
+				a =  -(2*(snd u)-2*(snd v))/(-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3)
+				b = ((3*(snd u) - 3*(snd v))*(fst v) + (3*(snd u) - 3*(snd v))*(fst u)) / (-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3) 
+				c = -(6*(snd u) - 6*(snd v))*(fst u)*(fst v) /(-(fst v)^3 + 3*(fst u)*((fst v)^2) - 3*((fst u)^2)*(fst v) + (fst u)^3)
+				d = ((-(snd u))*(fst v)^3 + 3*(snd u)*(fst u)*(fst v)^2 - 3*(snd v)*((fst u)^2)*(fst v) + (snd v)*(fst u)^3 )/(-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3)
+				p = P.sumPolys [ P.scalePoly a $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly b $ P.multPoly P.x P.x  , P.scalePoly c P.x ,  P.constPoly d ] --}
+flatCubicSpline x = quadraticSpline x
+
+{-
+
+3a(fst u)^2 + 2b(fst u) + c = 0
+3a(fst v)^2 + 2b(fst v) + c = 0
+a(fst u)^3 + b(fst u)^2 + c(fst u) + d = (snd u)
+a(fst v)^3 + b(fst v)^2 + c(fst v) + d = (snd v)
+
+3a(u)^2 + 2b(u) + c = 0
+3a(v)^2 + 2b(v) + c = 0
+a(u)^3 + b(u)^2 + c(u) + d = (t)
+a(v)^3 + b(v)^2 + c(v) + d = (r)
+
+a =  -(2*(snd u)-2*(snd v))/(-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3), 
+b = ((3*(snd u) - 3*(snd v))*(fst v) + (3*(snd u) - 3*(snd v))*(fst u)) / (-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3), 
+c = -(6*(snd u) - 6*(snd v))*(fst u)*(fst v) /(-(fst v)^3 + 3*(fst u)*((fst v)^2) - 3*((fst u)^2)*(fst v) + (fst u)^3), 
+d = ((-(snd u))*(fst v)^3 + 3*(snd u)*(fst u)*(fst v)^2 - 3*(snd v)*((fst u)^2)*(fst v) + (snd v)*(fst u)^3 )/(-(fst v)^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3)
+
+
+-}
+
+
+\end{code}
+
+
+
 
 Cubic-hermite, finite differance tangents.
 \begin{code}
@@ -231,6 +272,7 @@ appendPoints xs@(x:y:ys) =
 		++ [( (fst u) + 1 , linearIntrp u v ((fst u) + 1)) ] 
 appendPoints _ = [] 
 
+--this is not working as intended
 hermite :: (Ord a , Fractional a) => [(a,a)] -> Spline a
 hermite points = foldr
 		(\n s  -> ( \t -> (x n <= t) && (t <= x (n+1)) , P.composePoly ( P.scalePoly (1 / (x (n+1) - x n)) (P.addPoly P.x $ P.constPoly (x n))) ( P.sumPolys 
