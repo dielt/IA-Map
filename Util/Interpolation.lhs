@@ -259,6 +259,67 @@ d = ((-(snd u))*(fst v)^3 + 3*(snd u)*(fst u)*(fst v)^2 - 3*(snd v)*((fst u)^2)*
 
 
 
+Cubic - finite differance tangents
+Note that because of the uniqueness of solution, this should be the same as hermite with finite differances.
+\begin{code}
+
+cubicFD :: (Ord a , Fractional a) => [(a,a)] -> Spline a
+cubicFD points@(t:r:s:ys) = (\(_,_,_,s') -> s' ) $ foldl' f (head points',t,r,[]) ( tail . tail . tail $ points')
+	where
+		points' = appendPoints points
+		f (x,u,v,s) y = ( u, v , y ,(containmentTest u v , p ) : s)
+			where
+				dsu = ( (snd u) - (snd x) ) / (2*( (fst u) - (fst x) )) + ( (snd v) - (snd u) ) / (2*( (fst v) -(fst u) )) 
+				dsv = ( (snd y) - (snd v) ) / (2*( (fst y) - (fst v) )) + ( (snd v) - (snd u) ) / (2*( (fst v) -(fst u) )) 
+				a = ((-(fst v))*(dsv) + (fst u)*(dsv) + ( (fst u) - (fst v) )*(dsu) + 2*(snd v) - 2*(snd u) ) / ( (-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+				b = -( (fst u)*( (-(fst v))*(dsv) + 3*(snd v) - 3*(snd u) ) - ((fst v)^2)*(dsv) + 2*((fst u)^2)*(dsv) + ((-2)*(fst v)^2 + (fst u)*(fst v) + (fst u)^2 )*(dsu) + (3*(snd v) - 3*(snd u))*(fst v) ) / ((-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+				c = ((fst u)*( ( 6*(snd v) - 6*(snd u) )*(fst v) - 2*((fst v)^2)*(dsv) ) + ((fst u)^2)*(fst v)*(dsv) + ((fst u)^3)*(dsv) + ((-(fst v))^3 - (fst u)*(fst v)^2 + 2*((fst u)^2)*(fst v) )*(dsu) ) / ((-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3)
+				d = -(((fst u)^2)*(3*(snd v)*(fst v) - ((fst v)^2)*(dsv)) + ((fst u)^3)*( (fst v)*(dsv) - (snd v) ) + ( ((fst u)^2)*((fst v)^2) - (fst u)*(fst v)^3 )*(dsu) + (snd u)*(fst v)^3 - 3*(snd u)*(fst u)*(fst v)^2 ) / ( (-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+				p = P.sumPolys [ P.scalePoly a $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly b $ P.multPoly P.x P.x  , P.scalePoly c P.x ,  P.constPoly d ] --}
+--
+
+
+
+
+
+{-
+
+
+3a(fst u)^2 + 2b(fst u) + c = dsu
+3a(fst v)^2 + 2b(fst v) + c = dsv
+a(fst u)^3 + b(fst u)^2 + c(fst u) + d = (snd u)
+a(fst v)^3 + b(fst v)^2 + c(fst v) + d = (snd v)
+
+3*a*(u)^2 + 2*b*(u) + c = w
+3*a*(v)^2 + 2*b*(v) + c = z
+a*(u)^3 + b*(u)^2 + c*(u) + d = q
+a*(v)^3 + b*(v)^2 + c*(v) + d = r
+
+a = ((-v)*z + u*z + ( u - v )*w + 2*r - 2*q ) / ( (-v)^3 + 3*u*v^2 - 3*(u^2)*v + u^3 )
+b = -( u*( (-v)*z + 3*r - 3*q ) - (v^2)*z + 2*(u^2)*z + ((-2)*v^2 + u*v + u^2 )*w + (3*r - 3*q)*v ) / ((-v)^3 + 3*u*v^2 - 3*(u^2)*v + u^3 )
+c = (u*( ( 6*r - 6*q )*v - 2*(v^2)*z ) + (u^2)*v*z + (u^3)*z + ((-v)^3 - u*v^2 + 2*(u^2)*v )*w ) / ((-v)^3 + 3*u*v^2 - 3*(u^2)*v + u^3)
+d = -((u^2)*(3*r*v - (v^2)*z) + (u^3)*( v*z - r ) + ( (u^2)*(v^2) - u*v^3 )*w + q*v^3 - 3*q*u*v^2 ) / ( (-v)^3 + 3*u*v^2 - 3*(u^2)*v + u^3 )
+
+a = ((-(fst v))*(dsv) + (fst u)*(dsv) + ( (fst u) - (fst v) )*(dsu) + 2*(snd v) - 2*(snd u) ) / ( (-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+b = -( (fst u)*( (-(fst v))*(dsv) + 3*(snd v) - 3*(snd u) ) - ((fst v)^2)*(dsv) + 2*((fst u)^2)*(dsv) + ((-2)*(fst v)^2 + (fst u)*(fst v) + (fst u)^2 )*(dsu) + (3*(snd v) - 3*(snd u))*(fst v) ) / ((-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+c = ((fst u)*( ( 6*(snd v) - 6*(snd u) )*(fst v) - 2*((fst v)^2)*(dsv) ) + ((fst u)^2)*(fst v)*(dsv) + ((fst u)^3)*(dsv) + ((-(fst v))^3 - (fst u)*(fst v)^2 + 2*((fst u)^2)*(fst v) )*(dsu) ) / ((-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3)
+d = -(((fst u)^2)*(3*(snd v)*(fst v) - ((fst v)^2)*(dsv)) + ((fst u)^3)*( (fst v)*(dsv) - (snd v) ) + ( ((fst u)^2)*((fst v)^2) - (fst u)*(fst v)^3 )*(dsu) + (snd u)*(fst v)^3 - 3*(snd u)*(fst u)*(fst v)^2 ) / ( (-(fst v))^3 + 3*(fst u)*(fst v)^2 - 3*((fst u)^2)*(fst v) + (fst u)^3 )
+
+-}
+
+
+
+\end{code}
+
+
+
+
+
+
+
+
+
+
 Cubic-hermite, finite differance tangents.
 \begin{code}
 
@@ -272,6 +333,7 @@ appendPoints xs@(x:y:ys) =
 		++ [( (fst u) + 1 , linearIntrp u v ((fst u) + 1)) ] 
 appendPoints _ = [] 
 
+{-
 --this is not working as intended
 hermite :: (Ord a , Fractional a) => [(a,a)] -> Spline a
 hermite points = foldr
@@ -298,5 +360,5 @@ h01 :: (Num a,Eq a) => P.Poly a
 h01 = P.sumPolys [ P.scalePoly (-2) $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly (3) $ P.multPoly P.x P.x  ]
 h11 :: (Num a,Eq a) => P.Poly a
 h11 = P.sumPolys [ P.multPoly P.x $ P.multPoly P.x P.x , P.negatePoly $ P.multPoly P.x P.x  ]
-
+-}
 \end{code}
