@@ -137,6 +137,20 @@ joinTuple x = let
 	b' = x >>= (\(a,b) -> b )
 	in (a',b')
 
+--
+
+appTuple1 :: (a->b) -> (a,a) -> (b,b) 
+appTuple1 f (x,y) = (f x , f y)
+
+appTuple2 :: (a->b->c) -> (a,a) -> (b,b) -> (c,c)
+appTuple2 f (x,y) (z,w) = (f x z , f y w)
+
+addTuple = appTuple2 (+)
+
+foldTuple :: (a -> b -> b) -> (b,b) -> [(a,a)] -> (b,b)
+foldTuple f = foldr ( appTuple2 f )
+
+sumTuple = foldTuple (+) (0,0)
 
 \end{code}
 

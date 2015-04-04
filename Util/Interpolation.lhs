@@ -1,19 +1,31 @@
 \begin{code}
 
 
-module Util.Interpolation where
+module Util.Interpolation 
+(linear
+,linearFit
+,lagrange
+,Spline
+,evalSpline
+,linearSpline
+,quadraticSpline
+,cubicSpline
+,flatCubicSpline
+,cubicFD
+)where
 
 import Util.Base
 
 import qualified Math.Polynomial as P
 import Control.Monad
 import Data.List
+import Data.Array.Unboxed as V 
 
 
 \end{code}
 
 
-1 dimensional interpolation, done with tuples
+1 dimensional interpolation, done with lists of tuples
 
 linear
 \begin{code}
@@ -278,8 +290,15 @@ cubicFD points@(t:r:s:ys) = (\(_,_,_,s') -> s' ) $ foldl' f (head points',t,r,[]
 				p = P.sumPolys [ P.scalePoly a $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly b $ P.multPoly P.x P.x  , P.scalePoly c P.x ,  P.constPoly d ] --}
 --
 
-
-
+appendPoints :: Fractional a => [(a,a)] -> [(a,a)]
+appendPoints xs@(x:y:ys) = 
+	let 
+		u = last xs
+		v = last $ init xs
+	in [ ( (fst x) - 1 , linearIntrp x y ((fst x) - 1) ) ] 
+		++ xs 
+		++ [( (fst u) + 1 , linearIntrp u v ((fst u) + 1)) ] 
+appendPoints _ = [] 
 
 
 {-
@@ -288,7 +307,7 @@ cubicFD points@(t:r:s:ys) = (\(_,_,_,s') -> s' ) $ foldl' f (head points',t,r,[]
 3a(fst u)^2 + 2b(fst u) + c = dsu
 3a(fst v)^2 + 2b(fst v) + c = dsv
 a(fst u)^3 + b(fst u)^2 + c(fst u) + d = (snd u)
-a(fst v)^3 + b(fst v)^2 + c(fst v) + d = (snd v)
+a(fst v)^3 + b(fst v)^2 + c(fst v) + d = (snd v) 
 
 3*a*(u)^2 + 2*b*(u) + c = w
 3*a*(v)^2 + 2*b*(v) + c = z
@@ -307,6 +326,32 @@ d = -(((fst u)^2)*(3*(snd v)*(fst v) - ((fst v)^2)*(dsv)) + ((fst u)^3)*( (fst v
 
 -}
 
+\end{code}
+
+
+
+
+
+
+
+
+2 dimensional interpolation:
+
+Rough 2d polys
+\begin{code}
+
+-- [x^0[y^0,y^1 ...] , x^1[y^0,y^1 ...]  ... ]
+newtype Poly2 a = Poly2 [[a]] deriving (Eq,Show,Ord)
+
+evalPoly2 :: Num a => Poly2 a -> (a,a) -> a
+evalPoly2 (Poly2 list) (x,y) = foldr f 0 [0..n]
+	where
+		n = (length list) - 1
+		f i total' = foldr g total' [0..m]
+			where
+				m = length (list !! i) - 1
+				g j total = total + ((list !! i) !! j)*(x^i)*(y^j)
+
 
 
 \end{code}
@@ -318,47 +363,105 @@ d = -(((fst u)^2)*(3*(snd v)*(fst v) - ((fst v)^2)*(dsv)) + ((fst u)^3)*( (fst v
 
 
 
-
-
-Cubic-hermite, finite differance tangents.
+Bicubic interpolation; done with Arrays
+Note that we assume a regular interval of distance s
+Based on http://en.wikipedia.org/wiki/Bicubic_interpolation
 \begin{code}
 
-appendPoints :: Fractional a => [(a,a)] -> [(a,a)]
-appendPoints xs@(x:y:ys) = 
-	let 
-		u = last xs
-		v = last $ init xs
-	in [ ( (fst x) - 1 , linearIntrp x y ((fst x) - 1) ) ] 
-		++ xs 
-		++ [( (fst u) + 1 , linearIntrp u v ((fst u) + 1)) ] 
-appendPoints _ = [] 
+bicubicPointFD :: Array (Int,Int) Double -> Double -> (Double,Double) -> Poly2 Double
+bicubicPointFD arr s (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,a23],[a30,a31,a32,a33]]
+	where
+		((n_,m_),(n',m')) = bounds arr
+		getPoint (u,v) = if and [ n_ <= u , u <= n' , m_ <= v , v <= m' ] then arr V.! (u,v) else 0
+		p00 = getPoint (floor x ,floor y)
+		p01 = getPoint (floor x ,(floor y) + 1)
+		p10 = getPoint ( (floor x) + 1 ,floor y)
+		p11 = getPoint ( (floor x) + 1 , (floor y) + 1)
+		dx00 = ( (getPoint ((floor x) + 1 , (floor y))) - (getPoint ((floor x) - 1 , (floor y))) ) / (2*s)
+		dx01 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) - 1 , (floor y) + 1 )) ) / (2*s)
+		dx10 = ( (getPoint ((floor x) + 2 , (floor y))) - (getPoint ((floor x) , (floor y))) ) / (2*s)
+		dx11 = ( (getPoint ((floor x) + 2 , (floor y) + 1)) - (getPoint ((floor x) , (floor y) + 1 )) ) / (2*s)
+		dy00 = ( (getPoint ((floor x) , (floor y) + 1)) - (getPoint ((floor x) , (floor y) - 1 )) ) / (2*s)
+		dy01 = ( (getPoint ((floor x) , (floor y) + 2)) - (getPoint ((floor x) , (floor y) )) ) / (2*s)
+		dy10 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) + 1 , (floor y) - 1 )) ) / (2*s)
+		dy11 = ( (getPoint ((floor x) + 1 , (floor y) + 2)) - (getPoint ((floor x) + 1 , (floor y) )) ) / (2*s)
+		dxy00 = ( (getPoint ((floor x) + 1,(floor y) + 1)) - (getPoint ((floor x) + 1,(floor y) - 1)) - (getPoint ((floor x) - 1,(floor y) + 1)) + (getPoint ((floor x) - 1,(floor y) - 1)) ) / (4*s*s)
+		dxy01 = ( (getPoint ((floor x) + 1,(floor y) + 2)) - (getPoint ((floor x) + 1,(floor y) )) - (getPoint ((floor x) - 1,(floor y) + 2)) + (getPoint ((floor x) - 1,(floor y) )) ) / (4*s*s)
+		dxy10 = ( (getPoint ((floor x) + 2,(floor y) + 1)) - (getPoint ((floor x) + 2,(floor y) - 1)) - (getPoint ((floor x) ,(floor y) + 1)) + (getPoint ((floor x) ,(floor y) - 1)) ) / (4*s*s)
+		dxy11 = ( (getPoint ((floor x) + 2,(floor y) + 2)) - (getPoint ((floor x) + 2,(floor y) )) - (getPoint ((floor x) ,(floor y) + 2)) + (getPoint ((floor x) ,(floor y) )) ) / (4*s*s)
+		alpha :: Array (Int,Int) Double
+		alpha = listToArray21 [ [p00],[p10],[p01],[p11],[dx00],[dx10],[dx01],[dx11],[dy00],[dy10],[dy01],[dy11],[dxy00],[dxy10],[dxy01],[dxy11] ] (16,1)
+		c = mmult bicubeArray alpha
+		a00 = c ! (1,1)
+		a01 = c ! (5,1)
+		a02 = c ! (9,1)
+		a03 = c ! (13,1)
+		a10 = c ! (2,1)
+		a11 = c ! (6,1)
+		a12 = c ! (10,1)
+		a13 = c ! (14,1)
+		a20 = c ! (3,1)
+		a21 = c ! (7,1)
+		a22 = c ! (11,1)
+		a23 = c ! (15,1)
+		a30 = c ! (4,1)
+		a31 = c ! (8,1)
+		a32 = c ! (12,1)
+		a33 = c ! (16,1)
+		
 
-{-
---this is not working as intended
-hermite :: (Ord a , Fractional a) => [(a,a)] -> Spline a
-hermite points = foldr
-		(\n s  -> ( \t -> (x n <= t) && (t <= x (n+1)) , P.composePoly ( P.scalePoly (1 / (x (n+1) - x n)) (P.addPoly P.x $ P.constPoly (x n))) ( P.sumPolys 
-			[ P.scalePoly (p n) h00 
-			, P.scalePoly ((x (n+1) - x n )*(m n)) h10
-			, P.scalePoly (p (n+1)) h01
-			, P.scalePoly ((x (n+1) - x n )*(m (n+1))) h11
-			] )   ) : s 
-			) [] [1..((length points) - 1)]
-		where
-			points' = appendPoints points
-			x k = fst $ points' !! k
-			p k = snd $ points' !! k
-			m k = ( p (k+1) - p k ) / (2*(x (k+1) - x k )) + ( p k - p (k-1) ) / (2*(x k - x (k -1) )) 
+\end{code}
 
 
---the hermite basis polynomials.
-h00 :: (Num a,Eq a) => P.Poly a
-h00 = P.sumPolys [ P.scalePoly 2 $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly (-3) $ P.multPoly P.x P.x , P.one ]
-h10 :: (Num a,Eq a) => P.Poly a
-h10 = P.sumPolys [ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly (-2) $ P.multPoly P.x P.x , P.x ]
-h01 :: (Num a,Eq a) => P.Poly a
-h01 = P.sumPolys [ P.scalePoly (-2) $ P.multPoly P.x $ P.multPoly P.x P.x , P.scalePoly (3) $ P.multPoly P.x P.x  ]
-h11 :: (Num a,Eq a) => P.Poly a
-h11 = P.sumPolys [ P.multPoly P.x $ P.multPoly P.x P.x , P.negatePoly $ P.multPoly P.x P.x  ]
--}
+
+Matrix multiplication from 
+http://rosettacode.org/wiki/Matrix_multiplication#Haskell
+\begin{code}
+mmult :: (Ix i, Num a) => Array (i,i) a -> Array (i,i) a -> Array (i,i) a 
+mmult x y 
+   | x1 /= y0 || x1' /= y0'  = error "range mismatch"
+   | otherwise               = array ((x0,y1),(x0',y1')) l
+   where
+     ((x0,x1),(x0',x1')) = bounds x
+     ((y0,y1),(y0',y1')) = bounds y
+     ir = range (x0,x0')
+     jr = range (y1,y1')
+     kr = range (x1,x1')
+     l  = [((i,j), sum [x!(i,k) * y!(k,j) | k <- kr]) | i <- ir, j <- jr]
+
+\end{code}
+
+super hacky array constructer, for when we just want to plug in values
+\begin{code}
+
+listToArray20 :: [[a]] -> (Int,Int) -> Array (Int,Int) a 
+listToArray20 list (n,m) = array ((0,0),(n,m)) [ ((i,j), ( list !! i ) !! j  ) | i <- [0..n], j <- [0..m]  ]
+
+listToArray21 :: [[a]] -> (Int,Int) -> Array (Int,Int) a 
+listToArray21 list (n,m) = array ((1,1),(n,m)) [ ((i,j), ( list !! (i - 1) ) !! (j - 1)  ) | i <- [1..n], j <- [1..m]  ]
+
+\end{code}
+
+
+
+\begin{code}
+bicubeArray :: Array (Int,Int) Double
+bicubeArray = listToArray21
+	[	[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+		,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
+		,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
+		,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
+		,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
+		,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
+		,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
+		,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
+		,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
+		,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
+		,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
+		,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
+		,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
+		,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
+		,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
+		,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]] (16,16)
+
 \end{code}
