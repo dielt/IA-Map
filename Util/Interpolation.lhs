@@ -12,6 +12,11 @@ module Util.Interpolation
 ,cubicSpline
 ,flatCubicSpline
 ,cubicFD
+,Poly2
+,evalPoly2
+,trimPoly2
+,biLinear
+,biCubic
 )where
 
 import Util.Base
@@ -20,7 +25,6 @@ import qualified Math.Polynomial as P
 import Control.Monad
 import Data.List
 import Data.Array.Unboxed as V 
-import Data.Matrix as M
 
 
 \end{code}
@@ -354,6 +358,69 @@ evalPoly2 (Poly2 list) (x,y) = foldr f 0 [0..n]
 				g j total = total + ((list !! i) !! j)*(x^i)*(y^j)
 
 
+trimPoly2 :: (Num a,Eq a) => Poly2 a -> Poly2 a
+trimPoly2 (Poly2 list) = Poly2 $ map (reverse . dropWhile (0 ==) . reverse ) list
+
+
+
+--3 + y^2 -y^3 + xy + 4xy^3 - x^3
+t1 = Poly2 [[3,0,1,-1],[0,1,0,4],[0,0,0,0],[-1,0,0,0]]
+{-t2
+t3
+t4
+-}
+
+\end{code}
+
+
+
+
+
+--note we assume that arrays are indexed from the bottom left with (x,y)
+i.e.
+a_01 a_11
+a_00 a_10
+--We also assume that every point in the array has value, with the distance between points being scaled to 1.
+
+Bilinear
+\begin{code}
+biLinear :: RealFrac a => Array (Int,Int) a -> (a,a) -> Poly2 a
+biLinear arr (x,y) = Poly2 [[a00,a01],[a10,a11]]
+	where
+		getPoint (u,v) = if and [ n_ <= u , u <= n' , m_ <= v , v <= m' ] then arr V.! (u,v) else 0
+			where 
+				((n_,m_),(n',m')) = V.bounds arr
+		x0 = fromIntegral $ floor x
+		x1 = fromIntegral $ 1 + floor x
+		y0 = fromIntegral $ floor y
+		y1 = fromIntegral $ 1 + floor y
+		p00 = getPoint (floor x,floor y)
+		p01 = getPoint (floor x,1 + floor y)
+		p10 = getPoint (1 + floor x,floor y)
+		p11 = getPoint (1 + floor x,1 + floor y)
+		a00 = (p00*x1*y1-p01*x1*y0-p10*x0*y1+p11*x0*y0)/((x0-x1)*(y0-y1))
+		a01 = -(p00*x1-p01*x1-p10*x0+p11*x0)/((x0-x1)*(y0-y1))
+		a10 = -(p00*y1-p01*y0-p10*y1+p11*y0)/((x0-x1)*(y0-y1))
+		a11 = (p00-p01-p10+p11)/(x0*y0-x0*y1-x1*y0+x1*y1)
+--
+
+{--
+Of form
+a00 + a01y + a10x + a11xy
+
+Where we want to garruntee
+{a00 + a01*(y0) + a10*(x0) + a11*(x0)*(y0) = p00,
+a00 + a01*(y1) + a10*(x0) + a11*(x0)*(y1) = p01,
+a00 + a01*(y0) + a10*(x1) + a11*(x1)*(y0) = p10,
+a00 + a01*(y1) + a10*(x1) + a11*(x1)*(y1) = p11}
+
+Solving by maple for {a00,a01,a10,a11} gives
+a00 = (p00*x1*y1-p01*x1*y0-p10*x0*y1+p11*x0*y0)/((x0-x1)*(y0-y1))
+a01 = -(p00*x1-p01*x1-p10*x0+p11*x0)/((x0-x1)*(y0-y1))
+a10 = -(p00*y1-p01*y0-p10*y1+p11*y0)/((x0-x1)*(y0-y1))
+a11 = (p00-p01-p10+p11)/(x0*y0-x0*y1-x1*y0+x1*y1)
+
+--}
 
 \end{code}
 
@@ -364,47 +431,56 @@ evalPoly2 (Poly2 list) (x,y) = foldr f 0 [0..n]
 
 
 
+
+
+
 Bicubic interpolation; done with Arrays
-Note that we assume a regular interval of distance s
 Based on http://en.wikipedia.org/wiki/Bicubic_interpolation
 
---note we assume that arrays are indexed from the top left with (y,x)
-i.e.
-a_00 a_01
-a_10 a_11
---for the case of matrix multiplication
-
---however, for the original coordinates we assume indexing by bottom left with (x,y)
-
 \begin{code}
-
-bicubicFD :: Array (Int,Int) Double -> Double -> (Double,Double) -> Poly2 Double
-bicubicFD arr s (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,a23],[a30,a31,a32,a33]]
+--We assume 1 between each point
+biCubic :: RealFrac a => Array (Int,Int) a -> (a,a) -> Poly2 a
+biCubic arr (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,a23],[a30,a31,a32,a33]]
 	where
 		getPoint (u,v) = if and [ n_ <= u , u <= n' , m_ <= v , v <= m' ] then arr V.! (u,v) else 0
 			where 
 				((n_,m_),(n',m')) = V.bounds arr
-				p00 = getPoint (floor x ,floor y)
+		--The 4 surronding coordinates
 		x0 = fromIntegral $ floor x
-		x1 = fromIntegral $ (floor x) + 1
-		y0 =  fromIntegral $ floor x
-		y1 =  fromIntegral $(floor y) + 1
-		p00 = getPoint (floor x, floor y)
-		p01 = getPoint (floor x ,(floor y) + 1)
-		p10 = getPoint ( (floor x) + 1 ,floor y)
-		p11 = getPoint ( (floor x) + 1 , (floor y) + 1)
-		dx00 = ( (getPoint ((floor x) + 1 , (floor y))) - (getPoint ((floor x) - 1 , (floor y))) ) / (2)
-		dx01 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) - 1 , (floor y) + 1 )) ) / (2)
-		dx10 = ( (getPoint ((floor x) + 2 , (floor y))) - (getPoint ((floor x) , (floor y))) ) / (2)
-		dx11 = ( (getPoint ((floor x) + 2 , (floor y) + 1)) - (getPoint ((floor x) , (floor y) + 1 )) ) / (2)
-		dy00 = ( (getPoint ((floor x) , (floor y) + 1)) - (getPoint ((floor x) , (floor y) - 1 )) ) / (2)
-		dy01 = ( (getPoint ((floor x) , (floor y) + 2)) - (getPoint ((floor x) , (floor y) )) ) / (2)
-		dy10 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) + 1 , (floor y) - 1 )) ) / (2)
-		dy11 = ( (getPoint ((floor x) + 1 , (floor y) + 2)) - (getPoint ((floor x) + 1 , (floor y) )) ) / (2)
-		dxy00 = ( (getPoint ((floor x) + 1,(floor y) + 1)) - (getPoint ((floor x) + 1,(floor y) - 1)) - (getPoint ((floor x) - 1,(floor y) + 1)) + (getPoint ((floor x) - 1,(floor y) - 1)) ) / (4)
-		dxy01 = ( (getPoint ((floor x) + 1,(floor y) + 2)) - (getPoint ((floor x) + 1,(floor y) )) - (getPoint ((floor x) - 1,(floor y) + 2)) + (getPoint ((floor x) - 1,(floor y) )) ) / (4)
-		dxy10 = ( (getPoint ((floor x) + 2,(floor y) + 1)) - (getPoint ((floor x) + 2,(floor y) - 1)) - (getPoint ((floor x) ,(floor y) + 1)) + (getPoint ((floor x) ,(floor y) - 1)) ) / (4)
-		dxy11 = ( (getPoint ((floor x) + 2,(floor y) + 2)) - (getPoint ((floor x) + 2,(floor y) )) - (getPoint ((floor x) ,(floor y) + 2)) + (getPoint ((floor x) ,(floor y) )) ) / (4) --}
+		x1 = fromIntegral $ 1 + floor x
+		y0 = fromIntegral $ floor y
+		y1 = fromIntegral $ 1 + floor y
+		--The 16 Points we will be using
+		p00 = getPoint (floor x,floor y)
+		p01 = getPoint (floor x,1 + floor y)
+		p10 = getPoint (1 + floor x,floor y)
+		p11 = getPoint (1 + floor x,1 + floor y)
+		p02 = getPoint (floor x,2 + floor y)
+		p0_1 = getPoint (floor x, -1 + floor y)
+		p20 =  getPoint (2 + floor x,floor y)
+		p_10 = getPoint ( -1 + floor x,floor y)
+		p12 = getPoint (1 + floor x,2 + floor y)
+		p1_1 = getPoint (1+ floor x, -1 + floor y)
+		p21 =  getPoint (2 + floor x,1 + floor y)
+		p_11 = getPoint ( -1 + floor x,1 + floor y)
+		p22 = getPoint (2 + floor x,2 + floor y)
+		p2_1 = getPoint (2 + floor x,-1 + floor y)
+		p_12 = getPoint (-1 + floor x,2 + floor y)
+		p_1_1 = getPoint (-1 + floor x,-1 + floor y)
+		--finite differance derivatives
+		dx00 = (p10 - p_10)/2
+		dx01 = (p11 - p_11)/2
+		dx10 = (p20 - p00)/2
+		dx11 = (p21 - p01)/2
+		dy00 = (p01 - p0_1)/2
+		dy01 = (p02 - p00)/2
+		dy10 = (p11 - p1_1)/2
+		dy11 = (p12 - p10)/2
+		dxy00 = (p11 - p1_1 - p_11 + p_1_1)/4
+		dxy01 = (p12 - p10 - p_12 + p_10)/4
+		dxy10 = (p21 - p2_1 - p01 + p0_1)/4
+		dxy11 = (p22 - p20 - p02 + p00)/4
+		--from Maple
 		a00 = -(-dxy00*x0^2*x1^2*y0^2*y1^2+dxy00*x0^2*x1^2*y0*y1^3+dxy00*x0*x1^3*y0^2*y1^2-dxy00*x0*x1^3*y0*y1^3-dxy01*x0^2*x1^2*y0^3*y1+dxy01*x0^2*x1^2*y0^2*y1^2+dxy01*x0*x1^3*y0^3*y1-dxy01*x0*x1^3*y0^2*y1^2-dxy10*x0^3*x1*y0^2*y1^2+dxy10*x0^3*x1*y0*y1^3+dxy10*x0^2*x1^2*y0^2*y1^2-dxy10*x0^2*x1^2*y0*y1^3-dxy11*x0^3*x1*y0^3*y1+dxy11*x0^3*x1*y0^2*y1^2+dxy11*x0^2*x1^2*y0^3*y1-dxy11*x0^2*x1^2*y0^2*y1^2+3*dx00*x0^2*x1^2*y0*y1^2-dx00*x0^2*x1^2*y1^3-3*dx00*x0*x1^3*y0*y1^2+dx00*x0*x1^3*y1^3+dx01*x0^2*x1^2*y0^3-3*dx01*x0^2*x1^2*y0^2*y1-dx01*x0*x1^3*y0^3+3*dx01*x0*x1^3*y0^2*y1+3*dx10*x0^3*x1*y0*y1^2-dx10*x0^3*x1*y1^3-3*dx10*x0^2*x1^2*y0*y1^2+dx10*x0^2*x1^2*y1^3+dx11*x0^3*x1*y0^3-3*dx11*x0^3*x1*y0^2*y1-dx11*x0^2*x1^2*y0^3+3*dx11*x0^2*x1^2*y0^2*y1+3*dy00*x0*x1^2*y0^2*y1^2-3*dy00*x0*x1^2*y0*y1^3-dy00*x1^3*y0^2*y1^2+dy00*x1^3*y0*y1^3+3*dy01*x0*x1^2*y0^3*y1-3*dy01*x0*x1^2*y0^2*y1^2-dy01*x1^3*y0^3*y1+dy01*x1^3*y0^2*y1^2+dy10*x0^3*y0^2*y1^2-dy10*x0^3*y0*y1^3-3*dy10*x0^2*x1*y0^2*y1^2+3*dy10*x0^2*x1*y0*y1^3+dy11*x0^3*y0^3*y1-dy11*x0^3*y0^2*y1^2-3*dy11*x0^2*x1*y0^3*y1+3*dy11*x0^2*x1*y0^2*y1^2-9*p00*x0*x1^2*y0*y1^2+3*p00*x0*x1^2*y1^3+3*p00*x1^3*y0*y1^2-p00*x1^3*y1^3-3*p01*x0*x1^2*y0^3+9*p01*x0*x1^2*y0^2*y1+p01*x1^3*y0^3-3*p01*x1^3*y0^2*y1-3*p10*x0^3*y0*y1^2+p10*x0^3*y1^3+9*p10*x0^2*x1*y0*y1^2-3*p10*x0^2*x1*y1^3-p11*x0^3*y0^3+3*p11*x0^3*y0^2*y1+3*p11*x0^2*x1*y0^3-9*p11*x0^2*x1*y0^2*y1)/((x0-x1)*(x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3))
 		a01 = (-2*dxy00*x0^2*x1^2*y0^2*y1+dxy00*x0^2*x1^2*y0*y1^2+dxy00*x0^2*x1^2*y1^3+2*dxy00*x0*x1^3*y0^2*y1-dxy00*x0*x1^3*y0*y1^2-dxy00*x0*x1^3*y1^3-dxy01*x0^2*x1^2*y0^3-dxy01*x0^2*x1^2*y0^2*y1+2*dxy01*x0^2*x1^2*y0*y1^2+dxy01*x0*x1^3*y0^3+dxy01*x0*x1^3*y0^2*y1-2*dxy01*x0*x1^3*y0*y1^2-2*dxy10*x0^3*x1*y0^2*y1+dxy10*x0^3*x1*y0*y1^2+dxy10*x0^3*x1*y1^3+2*dxy10*x0^2*x1^2*y0^2*y1-dxy10*x0^2*x1^2*y0*y1^2-dxy10*x0^2*x1^2*y1^3-dxy11*x0^3*x1*y0^3-dxy11*x0^3*x1*y0^2*y1+2*dxy11*x0^3*x1*y0*y1^2+dxy11*x0^2*x1^2*y0^3+dxy11*x0^2*x1^2*y0^2*y1-2*dxy11*x0^2*x1^2*y0*y1^2+6*dx00*x0^2*x1^2*y0*y1-6*dx00*x0*x1^3*y0*y1-6*dx01*x0^2*x1^2*y0*y1+6*dx01*x0*x1^3*y0*y1+6*dx10*x0^3*x1*y0*y1-6*dx10*x0^2*x1^2*y0*y1-6*dx11*x0^3*x1*y0*y1+6*dx11*x0^2*x1^2*y0*y1+6*dy00*x0*x1^2*y0^2*y1-3*dy00*x0*x1^2*y0*y1^2-3*dy00*x0*x1^2*y1^3-2*dy00*x1^3*y0^2*y1+dy00*x1^3*y0*y1^2+dy00*x1^3*y1^3+3*dy01*x0*x1^2*y0^3+3*dy01*x0*x1^2*y0^2*y1-6*dy01*x0*x1^2*y0*y1^2-dy01*x1^3*y0^3-dy01*x1^3*y0^2*y1+2*dy01*x1^3*y0*y1^2+2*dy10*x0^3*y0^2*y1-dy10*x0^3*y0*y1^2-dy10*x0^3*y1^3-6*dy10*x0^2*x1*y0^2*y1+3*dy10*x0^2*x1*y0*y1^2+3*dy10*x0^2*x1*y1^3+dy11*x0^3*y0^3+dy11*x0^3*y0^2*y1-2*dy11*x0^3*y0*y1^2-3*dy11*x0^2*x1*y0^3-3*dy11*x0^2*x1*y0^2*y1+6*dy11*x0^2*x1*y0*y1^2-18*p00*x0*x1^2*y0*y1+6*p00*x1^3*y0*y1+18*p01*x0*x1^2*y0*y1-6*p01*x1^3*y0*y1-6*p10*x0^3*y0*y1+18*p10*x0^2*x1*y0*y1+6*p11*x0^3*y0*y1-18*p11*x0^2*x1*y0*y1)/((x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3)*(x0-x1))
 		a02 = -(-dxy00*x0^2*x1^2*y0^2-dxy00*x0^2*x1^2*y0*y1+2*dxy00*x0^2*x1^2*y1^2+dxy00*x0*x1^3*y0^2+dxy00*x0*x1^3*y0*y1-2*dxy00*x0*x1^3*y1^2-2*dxy01*x0^2*x1^2*y0^2+dxy01*x0^2*x1^2*y0*y1+dxy01*x0^2*x1^2*y1^2+2*dxy01*x0*x1^3*y0^2-dxy01*x0*x1^3*y0*y1-dxy01*x0*x1^3*y1^2-dxy10*x0^3*x1*y0^2-dxy10*x0^3*x1*y0*y1+2*dxy10*x0^3*x1*y1^2+dxy10*x0^2*x1^2*y0^2+dxy10*x0^2*x1^2*y0*y1-2*dxy10*x0^2*x1^2*y1^2-2*dxy11*x0^3*x1*y0^2+dxy11*x0^3*x1*y0*y1+dxy11*x0^3*x1*y1^2+2*dxy11*x0^2*x1^2*y0^2-dxy11*x0^2*x1^2*y0*y1-dxy11*x0^2*x1^2*y1^2+3*dx00*x0^2*x1^2*y0+3*dx00*x0^2*x1^2*y1-3*dx00*x0*x1^3*y0-3*dx00*x0*x1^3*y1-3*dx01*x0^2*x1^2*y0-3*dx01*x0^2*x1^2*y1+3*dx01*x0*x1^3*y0+3*dx01*x0*x1^3*y1+3*dx10*x0^3*x1*y0+3*dx10*x0^3*x1*y1-3*dx10*x0^2*x1^2*y0-3*dx10*x0^2*x1^2*y1-3*dx11*x0^3*x1*y0-3*dx11*x0^3*x1*y1+3*dx11*x0^2*x1^2*y0+3*dx11*x0^2*x1^2*y1+3*dy00*x0*x1^2*y0^2+3*dy00*x0*x1^2*y0*y1-6*dy00*x0*x1^2*y1^2-dy00*x1^3*y0^2-dy00*x1^3*y0*y1+2*dy00*x1^3*y1^2+6*dy01*x0*x1^2*y0^2-3*dy01*x0*x1^2*y0*y1-3*dy01*x0*x1^2*y1^2-2*dy01*x1^3*y0^2+dy01*x1^3*y0*y1+dy01*x1^3*y1^2+dy10*x0^3*y0^2+dy10*x0^3*y0*y1-2*dy10*x0^3*y1^2-3*dy10*x0^2*x1*y0^2-3*dy10*x0^2*x1*y0*y1+6*dy10*x0^2*x1*y1^2+2*dy11*x0^3*y0^2-dy11*x0^3*y0*y1-dy11*x0^3*y1^2-6*dy11*x0^2*x1*y0^2+3*dy11*x0^2*x1*y0*y1+3*dy11*x0^2*x1*y1^2-9*p00*x0*x1^2*y0-9*p00*x0*x1^2*y1+3*p00*x1^3*y0+3*p00*x1^3*y1+9*p01*x0*x1^2*y0+9*p01*x0*x1^2*y1-3*p01*x1^3*y0-3*p01*x1^3*y1-3*p10*x0^3*y0-3*p10*x0^3*y1+9*p10*x0^2*x1*y0+9*p10*x0^2*x1*y1+3*p11*x0^3*y0+3*p11*x0^3*y1-9*p11*x0^2*x1*y0-9*p11*x0^2*x1*y1)/((y0-y1)*(x0^3*y0^2-2*x0^3*y0*y1+x0^3*y1^2-3*x0^2*x1*y0^2+6*x0^2*x1*y0*y1-3*x0^2*x1*y1^2+3*x0*x1^2*y0^2-6*x0*x1^2*y0*y1+3*x0*x1^2*y1^2-x1^3*y0^2+2*x1^3*y0*y1-x1^3*y1^2))
@@ -422,12 +498,8 @@ bicubicFD arr s (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,
 		a32 = (-dxy00*x0*y0^2-dxy00*x0*y0*y1+2*dxy00*x0*y1^2+dxy00*x1*y0^2+dxy00*x1*y0*y1-2*dxy00*x1*y1^2-2*dxy01*x0*y0^2+dxy01*x0*y0*y1+dxy01*x0*y1^2+2*dxy01*x1*y0^2-dxy01*x1*y0*y1-dxy01*x1*y1^2-dxy10*x0*y0^2-dxy10*x0*y0*y1+2*dxy10*x0*y1^2+dxy10*x1*y0^2+dxy10*x1*y0*y1-2*dxy10*x1*y1^2-2*dxy11*x0*y0^2+dxy11*x0*y0*y1+dxy11*x0*y1^2+2*dxy11*x1*y0^2-dxy11*x1*y0*y1-dxy11*x1*y1^2+3*dx00*x0*y0+3*dx00*x0*y1-3*dx00*x1*y0-3*dx00*x1*y1-3*dx01*x0*y0-3*dx01*x0*y1+3*dx01*x1*y0+3*dx01*x1*y1+3*dx10*x0*y0+3*dx10*x0*y1-3*dx10*x1*y0-3*dx10*x1*y1-3*dx11*x0*y0-3*dx11*x0*y1+3*dx11*x1*y0+3*dx11*x1*y1+2*dy00*y0^2+2*dy00*y0*y1-4*dy00*y1^2+4*dy01*y0^2-2*dy01*y0*y1-2*dy01*y1^2-2*dy10*y0^2-2*dy10*y0*y1+4*dy10*y1^2-4*dy11*y0^2+2*dy11*y0*y1+2*dy11*y1^2-6*p00*y0-6*p00*y1+6*p01*y0+6*p01*y1+6*p10*y0+6*p10*y1-6*p11*y0-6*p11*y1)/((x0^3*y0-x0^3*y1-3*x0^2*x1*y0+3*x0^2*x1*y1+3*x0*x1^2*y0-3*x0*x1^2*y1-x1^3*y0+x1^3*y1)*(y0^2-2*y0*y1+y1^2))
 		a33 = -(-dxy00*x0*y0+dxy00*x0*y1+dxy00*x1*y0-dxy00*x1*y1-dxy01*x0*y0+dxy01*x0*y1+dxy01*x1*y0-dxy01*x1*y1-dxy10*x0*y0+dxy10*x0*y1+dxy10*x1*y0-dxy10*x1*y1-dxy11*x0*y0+dxy11*x0*y1+dxy11*x1*y0-dxy11*x1*y1+2*dx00*x0-2*dx00*x1-2*dx01*x0+2*dx01*x1+2*dx10*x0-2*dx10*x1-2*dx11*x0+2*dx11*x1+2*dy00*y0-2*dy00*y1+2*dy01*y0-2*dy01*y1-2*dy10*y0+2*dy10*y1-2*dy11*y0+2*dy11*y1-4*p00+4*p01+4*p10-4*p11)/(x0^3*y0^3-3*x0^3*y0^2*y1+3*x0^3*y0*y1^2-x0^3*y1^3-3*x0^2*x1*y0^3+9*x0^2*x1*y0^2*y1-9*x0^2*x1*y0*y1^2+3*x0^2*x1*y1^3+3*x0*x1^2*y0^3-9*x0*x1^2*y0^2*y1+9*x0*x1^2*y0*y1^2-3*x0*x1^2*y1^3-x1^3*y0^3+3*x1^3*y0^2*y1-3*x1^3*y0*y1^2+x1^3*y1^3)
 
-		
-
+--
 \end{code}
-
-
-
 
 {-
 A bicubic equation will have the general form 
@@ -486,26 +558,23 @@ f'xy ((x1),(y0)) = a11 + a12*2*(y0) + a13*3*(y0)^2 + a21*(2*(x1)) + a22*(2*(x1))
 f'xy ((x0),(y1)) = a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x0)) + a22*(2*(x0))*2*(y1) + a23*(2*(x0))*3*(y1)^2  + a31*(3*(x0)^2) + a32*(3*(x0)^2)*2*(y1) + a33*(3*(x0)^2)*3*(y1)^2 = dxy01
 f'xy ((x1),(y1)) = a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x1)) + a22*(2*(x1))*2*(y1) + a23*(2*(x1))*3*(y1)^2  + a31*(3*(x1)^2) + a32*(3*(x1)^2)*2*(y1) + a33*(3*(x1)^2)*3*(y1)^2 = dxy11
 
-Which by Maple
 
-
-
-a00 + a01*(y0) + a02*(y0)^2 + a03*(y0)^3 + a10*(x0) + a11*(x0)*(y0) + a12*(x0)*(y0)^2 + a13*(x0)*(y0)^3 + a20*((x0)^2) + a21*((x0)^2)*(y0) + a22*((x0)^2)*(y0)^2 + a23*((x0)^2)*(y0)^3 + a30*((x0)^3) + a31*((x0)^3)*(y0) + a32*((x0)^3)*(y0)^2 + a33*((x0)^3)*(y0)^3 = p00
-a00 + a01*(y0) + a02*(y0)^2 + a03*(y0)^3 + a10*(x1) + a11*(x1)*(y0) + a12*(x1)*(y0)^2 + a13*(x1)*(y0)^3 + a20*((x1)^2) + a21*((x1)^2)*(y0) + a22*((x1)^2)*(y0)^2 + a23*((x1)^2)*(y0)^3 + a30*((x1)^3) + a31*((x1)^3)*(y0) + a32*((x1)^3)*(y0)^2 + a33*((x1)^3)*(y0)^3 = p10
-a00 + a01*(y1) + a02*(y1)^2 + a03*(y1)^3 + a10*(x0) + a11*(x0)*(y1) + a12*(x0)*(y1)^2 + a13*(x0)*(y1)^3 + a20*((x0)^2) + a21*((x0)^2)*(y1) + a22*((x0)^2)*(y1)^2 + a23*((x0)^2)*(y1)^3 + a30*((x0)^3) + a31*((x0)^3)*(y1) + a32*((x0)^3)*(y1)^2 + a33*((x0)^3)*(y1)^3 = p01
-a00 + a01*(y1) + a02*(y1)^2 + a03*(y1)^3 + a10*(x1) + a11*(x1)*(y1) + a12*(x1)*(y1)^2 + a13*(x1)*(y1)^3 + a20*((x1)^2) + a21*((x1)^2)*(y1) + a22*((x1)^2)*(y1)^2 + a23*((x1)^2)*(y1)^3 + a30*((x1)^3) + a31*((x1)^3)*(y1) + a32*((x1)^3)*(y1)^2 + a33*((x1)^3)*(y1)^3 = p11
-a10 + a11*(y0) + a12*(y0)^2 + a13*(y0)^3 + a20*(2*(x0)) + a21*(2*(x0))*(y0) + a22*(2*(x0))*(y0)^2 + a23*(2*(x0))*(y0)^3 + a30*(3*(x0)^2) + a31*(3*(x0)^2)*(y0) + a32*(3*(x0)^2)*(y0)^2 + a33*(3*(x0)^2)*(y0)^3 = dx00
-a10 + a11*(y0) + a12*(y0)^2 + a13*(y0)^3 + a20*(2*(x1)) + a21*(2*(x1))*(y0) + a22*(2*(x1))*(y0)^2 + a23*(2*(x1))*(y0)^3 + a30*(3*(x1)^2) + a31*(3*(x1)^2)*(y0) + a32*(3*(x1)^2)*(y0)^2 + a33*(3*(x1)^2)*(y0)^3 = dx10
-a10 + a11*(y1) + a12*(y1)^2 + a13*(y1)^3 + a20*(2*(x0)) + a21*(2*(x0))*(y1) + a22*(2*(x0))*(y1)^2 + a23*(2*(x0))*(y1)^3 + a30*(3*(x0)^2) + a31*(3*(x0)^2)*(y1) + a32*(3*(x0)^2)*(y1)^2 + a33*(3*(x0)^2)*(y1)^3 = dx01
-a10 + a11*(y1) + a12*(y1)^2 + a13*(y1)^3 + a20*(2*(x1)) + a21*(2*(x1))*(y1) + a22*(2*(x1))*(y1)^2 + a23*(2*(x1))*(y1)^3 + a30*(3*(x1)^2) + a31*(3*(x1)^2)*(y1) + a32*(3*(x1)^2)*(y1)^2 + a33*(3*(x1)^2)*(y1)^3 = dx11
-a01 + a02*2*(y0) + a03*3*(y0)^2 + a11*(x0) + a12*(x0)*2*(y0) + a13*(x0)*3*(y0)^2 + a21*((x0)^2) + a22*((x0)^2)*2*(y0) + a23*((x0)^2)*3*(y0)^2 + a31*((x0)^3) + a32*((x0)^3)*2*(y0) + a33*((x0)^3)*3*(y0)^2 = dy00
-a01 + a02*2*(y0) + a03*3*(y0)^2 + a11*(x1) + a12*(x1)*2*(y0) + a13*(x1)*3*(y0)^2 + a21*((x1)^2) + a22*((x1)^2)*2*(y0) + a23*((x1)^2)*3*(y0)^2 + a31*((x1)^3) + a32*((x1)^3)*2*(y0) + a33*((x1)^3)*3*(y0)^2 = dy10
-a01 + a02*2*(y1) + a03*3*(y1)^2 + a11*(x0) + a12*(x0)*2*(y1) + a13*(x0)*3*(y1)^2 + a21*((x0)^2) + a22*((x0)^2)*2*(y1) + a23*((x0)^2)*3*(y1)^2 + a31*((x0)^3) + a32*((x0)^3)*2*(y1) + a33*((x0)^3)*3*(y1)^2 = dy01
-a01 + a02*2*(y1) + a03*3*(y1)^2 + a11*(x1) + a12*(x1)*2*(y1) + a13*(x1)*3*(y1)^2 + a21*((x1)^2) + a22*((x1)^2)*2*(y1) + a23*((x1)^2)*3*(y1)^2 + a31*((x1)^3) + a32*((x1)^3)*2*(y1) + a33*((x1)^3)*3*(y1)^2 = dy11
-a11 + a12*2*(y0) + a13*3*(y0)^2 + a21*(2*(x0)) + a22*(2*(x0))*2*(y0) + a23*(2*(x0))*3*(y0)^2  + a31*(3*(x0)^2) + a32*(3*(x0)^2)*2*(y0) + a33*(3*(x0)^2)*3*(y0)^2 = dxy00
-a11 + a12*2*(y0) + a13*3*(y0)^2 + a21*(2*(x1)) + a22*(2*(x1))*2*(y0) + a23*(2*(x1))*3*(y0)^2  + a31*(3*(x1)^2) + a32*(3*(x1)^2)*2*(y0) + a33*(3*(x1)^2)*3*(y0)^2 = dxy10
-a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x0)) + a22*(2*(x0))*2*(y1) + a23*(2*(x0))*3*(y1)^2  + a31*(3*(x0)^2) + a32*(3*(x0)^2)*2*(y1) + a33*(3*(x0)^2)*3*(y1)^2 = dxy01
-a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x1)) + a22*(2*(x1))*2*(y1) + a23*(2*(x1))*3*(y1)^2  + a31*(3*(x1)^2) + a32*(3*(x1)^2)*2*(y1) + a33*(3*(x1)^2)*3*(y1)^2 = dxy11
+{a00 + a01*(y0) + a02*(y0)^2 + a03*(y0)^3 + a10*(x0) + a11*(x0)*(y0) + a12*(x0)*(y0)^2 + a13*(x0)*(y0)^3 + a20*((x0)^2) + a21*((x0)^2)*(y0) + a22*((x0)^2)*(y0)^2 + a23*((x0)^2)*(y0)^3 + a30*((x0)^3) + a31*((x0)^3)*(y0) + a32*((x0)^3)*(y0)^2 + a33*((x0)^3)*(y0)^3 = p00,
+a00 + a01*(y0) + a02*(y0)^2 + a03*(y0)^3 + a10*(x1) + a11*(x1)*(y0) + a12*(x1)*(y0)^2 + a13*(x1)*(y0)^3 + a20*((x1)^2) + a21*((x1)^2)*(y0) + a22*((x1)^2)*(y0)^2 + a23*((x1)^2)*(y0)^3 + a30*((x1)^3) + a31*((x1)^3)*(y0) + a32*((x1)^3)*(y0)^2 + a33*((x1)^3)*(y0)^3 = p10,
+a00 + a01*(y1) + a02*(y1)^2 + a03*(y1)^3 + a10*(x0) + a11*(x0)*(y1) + a12*(x0)*(y1)^2 + a13*(x0)*(y1)^3 + a20*((x0)^2) + a21*((x0)^2)*(y1) + a22*((x0)^2)*(y1)^2 + a23*((x0)^2)*(y1)^3 + a30*((x0)^3) + a31*((x0)^3)*(y1) + a32*((x0)^3)*(y1)^2 + a33*((x0)^3)*(y1)^3 = p01,
+a00 + a01*(y1) + a02*(y1)^2 + a03*(y1)^3 + a10*(x1) + a11*(x1)*(y1) + a12*(x1)*(y1)^2 + a13*(x1)*(y1)^3 + a20*((x1)^2) + a21*((x1)^2)*(y1) + a22*((x1)^2)*(y1)^2 + a23*((x1)^2)*(y1)^3 + a30*((x1)^3) + a31*((x1)^3)*(y1) + a32*((x1)^3)*(y1)^2 + a33*((x1)^3)*(y1)^3 = p11,
+a10 + a11*(y0) + a12*(y0)^2 + a13*(y0)^3 + a20*(2*(x0)) + a21*(2*(x0))*(y0) + a22*(2*(x0))*(y0)^2 + a23*(2*(x0))*(y0)^3 + a30*(3*(x0)^2) + a31*(3*(x0)^2)*(y0) + a32*(3*(x0)^2)*(y0)^2 + a33*(3*(x0)^2)*(y0)^3 = dx00,
+a10 + a11*(y0) + a12*(y0)^2 + a13*(y0)^3 + a20*(2*(x1)) + a21*(2*(x1))*(y0) + a22*(2*(x1))*(y0)^2 + a23*(2*(x1))*(y0)^3 + a30*(3*(x1)^2) + a31*(3*(x1)^2)*(y0) + a32*(3*(x1)^2)*(y0)^2 + a33*(3*(x1)^2)*(y0)^3 = dx10,
+a10 + a11*(y1) + a12*(y1)^2 + a13*(y1)^3 + a20*(2*(x0)) + a21*(2*(x0))*(y1) + a22*(2*(x0))*(y1)^2 + a23*(2*(x0))*(y1)^3 + a30*(3*(x0)^2) + a31*(3*(x0)^2)*(y1) + a32*(3*(x0)^2)*(y1)^2 + a33*(3*(x0)^2)*(y1)^3 = dx01,
+a10 + a11*(y1) + a12*(y1)^2 + a13*(y1)^3 + a20*(2*(x1)) + a21*(2*(x1))*(y1) + a22*(2*(x1))*(y1)^2 + a23*(2*(x1))*(y1)^3 + a30*(3*(x1)^2) + a31*(3*(x1)^2)*(y1) + a32*(3*(x1)^2)*(y1)^2 + a33*(3*(x1)^2)*(y1)^3 = dx11,
+a01 + a02*2*(y0) + a03*3*(y0)^2 + a11*(x0) + a12*(x0)*2*(y0) + a13*(x0)*3*(y0)^2 + a21*((x0)^2) + a22*((x0)^2)*2*(y0) + a23*((x0)^2)*3*(y0)^2 + a31*((x0)^3) + a32*((x0)^3)*2*(y0) + a33*((x0)^3)*3*(y0)^2 = dy00,
+a01 + a02*2*(y0) + a03*3*(y0)^2 + a11*(x1) + a12*(x1)*2*(y0) + a13*(x1)*3*(y0)^2 + a21*((x1)^2) + a22*((x1)^2)*2*(y0) + a23*((x1)^2)*3*(y0)^2 + a31*((x1)^3) + a32*((x1)^3)*2*(y0) + a33*((x1)^3)*3*(y0)^2 = dy10,
+a01 + a02*2*(y1) + a03*3*(y1)^2 + a11*(x0) + a12*(x0)*2*(y1) + a13*(x0)*3*(y1)^2 + a21*((x0)^2) + a22*((x0)^2)*2*(y1) + a23*((x0)^2)*3*(y1)^2 + a31*((x0)^3) + a32*((x0)^3)*2*(y1) + a33*((x0)^3)*3*(y1)^2 = dy01,
+a01 + a02*2*(y1) + a03*3*(y1)^2 + a11*(x1) + a12*(x1)*2*(y1) + a13*(x1)*3*(y1)^2 + a21*((x1)^2) + a22*((x1)^2)*2*(y1) + a23*((x1)^2)*3*(y1)^2 + a31*((x1)^3) + a32*((x1)^3)*2*(y1) + a33*((x1)^3)*3*(y1)^2 = dy11,
+a11 + a12*2*(y0) + a13*3*(y0)^2 + a21*(2*(x0)) + a22*(2*(x0))*2*(y0) + a23*(2*(x0))*3*(y0)^2  + a31*(3*(x0)^2) + a32*(3*(x0)^2)*2*(y0) + a33*(3*(x0)^2)*3*(y0)^2 = dxy00,
+a11 + a12*2*(y0) + a13*3*(y0)^2 + a21*(2*(x1)) + a22*(2*(x1))*2*(y0) + a23*(2*(x1))*3*(y0)^2  + a31*(3*(x1)^2) + a32*(3*(x1)^2)*2*(y0) + a33*(3*(x1)^2)*3*(y0)^2 = dxy10,
+a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x0)) + a22*(2*(x0))*2*(y1) + a23*(2*(x0))*3*(y1)^2  + a31*(3*(x0)^2) + a32*(3*(x0)^2)*2*(y1) + a33*(3*(x0)^2)*3*(y1)^2 = dxy01,
+a11 + a12*2*(y1) + a13*3*(y1)^2 + a21*(2*(x1)) + a22*(2*(x1))*2*(y1) + a23*(2*(x1))*3*(y1)^2  + a31*(3*(x1)^2) + a32*(3*(x1)^2)*2*(y1) + a33*(3*(x1)^2)*3*(y1)^2 = dxy11}
 
 with params x0,x1,y0,y1,p00,p10,p01,p11,dx00,dx10,dx01,dx11,dy00,dy10,dy01,dy11,dxy00,dxy10,dxy01,dxy11
 To be Solved for
@@ -531,50 +600,45 @@ a32 = (-dxy00*x0*y0^2-dxy00*x0*y0*y1+2*dxy00*x0*y1^2+dxy00*x1*y0^2+dxy00*x1*y0*y
 a33 = -(-dxy00*x0*y0+dxy00*x0*y1+dxy00*x1*y0-dxy00*x1*y1-dxy01*x0*y0+dxy01*x0*y1+dxy01*x1*y0-dxy01*x1*y1-dxy10*x0*y0+dxy10*x0*y1+dxy10*x1*y0-dxy10*x1*y1-dxy11*x0*y0+dxy11*x0*y1+dxy11*x1*y0-dxy11*x1*y1+2*dx00*x0-2*dx00*x1-2*dx01*x0+2*dx01*x1+2*dx10*x0-2*dx10*x1-2*dx11*x0+2*dx11*x1+2*dy00*y0-2*dy00*y1+2*dy01*y0-2*dy01*y1-2*dy10*y0+2*dy10*y1-2*dy11*y0+2*dy11*y1-4*p00+4*p01+4*p10-4*p11)/(x0^3*y0^3-3*x0^3*y0^2*y1+3*x0^3*y0*y1^2-x0^3*y1^3-3*x0^2*x1*y0^3+9*x0^2*x1*y0^2*y1-9*x0^2*x1*y0*y1^2+3*x0^2*x1*y1^3+3*x0*x1^2*y0^3-9*x0*x1^2*y0^2*y1+9*x0*x1^2*y0*y1^2-3*x0*x1^2*y1^3-x1^3*y0^3+3*x1^3*y0^2*y1-3*x1^3*y0*y1^2+x1^3*y1^3)
 
 
+
+
 -}
 
 
 
 
+2 Dimensional Splines, done analagously to 1d. 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-For use in 
 \begin{code}
-bicubeMatrix :: M.Matrix Double
-bicubeMatrix = M.fromLists
-	[	[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-		,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
-		,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
-		,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
-		,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
-		,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
-		,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
-		,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
-		,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
-		,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
-		,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
-		,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
-		,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
-		,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
-		,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
-		,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]] 
---
 
-x16 = M.fromLists [ [1],[2],[3],[4.0],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16] ]
+
 
 \end{code}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 super hacky array constructer, for when we just want to plug in values
@@ -595,7 +659,25 @@ listToArray20 list (n,m) = array ((0,0),(n,m)) [ ((i,j), ( (reverse list) !! j )
 test1 = listToArray20 [[0,0,0],[0,1.0,0]] (2,1)
 test2 = listToArray21 [[0,0,0],[0,1.0,0]] (2,3)
 
-testfn u = evalPoly2 ( bicubicFD bicubeMatrix 1 u ) u
+test3 = listToArray20
+	[[0,0,0,0,0]
+	,[0,0,1.0,0,0]
+	,[0,2,3,2,0]
+	,[0,-1,1,3,0]
+	,[0,0,0,0,0]] (4,4)
+	
+	
+test4 = listToArray20
+	[[0,0,0,0,0]
+	,[0,0,1.0,0,0]
+	,[0,0,0,0,0]
+	,[0,0,0,0,0]
+	,[0,0,0,0,0]] (4,4)
+
+testfn u = evalPoly2 ( biLinear test3 u ) u
+
+testfn2 u = evalPoly2 ( biCubic test3 u ) u
+
 
 \end{code}
 
@@ -605,50 +687,3 @@ testfn u = evalPoly2 ( bicubicFD bicubeMatrix 1 u ) u
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-		p00 = getPoint (floor x ,floor y)
-		p01 = getPoint (floor x ,(floor y) + 1)
-		p10 = getPoint ( (floor x) + 1 ,floor y)
-		p11 = getPoint ( (floor x) + 1 , (floor y) + 1)
-		dx00 = ( (getPoint ((floor x) + 1 , (floor y))) - (getPoint ((floor x) - 1 , (floor y))) ) / (2)
-		dx01 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) - 1 , (floor y) + 1 )) ) / (2)
-		dx10 = ( (getPoint ((floor x) + 2 , (floor y))) - (getPoint ((floor x) , (floor y))) ) / (2)
-		dx11 = ( (getPoint ((floor x) + 2 , (floor y) + 1)) - (getPoint ((floor x) , (floor y) + 1 )) ) / (2)
-		dy00 = ( (getPoint ((floor x) , (floor y) + 1)) - (getPoint ((floor x) , (floor y) - 1 )) ) / (2)
-		dy01 = ( (getPoint ((floor x) , (floor y) + 2)) - (getPoint ((floor x) , (floor y) )) ) / (2)
-		dy10 = ( (getPoint ((floor x) + 1 , (floor y) + 1)) - (getPoint ((floor x) + 1 , (floor y) - 1 )) ) / (2)
-		dy11 = ( (getPoint ((floor x) + 1 , (floor y) + 2)) - (getPoint ((floor x) + 1 , (floor y) )) ) / (2)
-		dxy00 = ( (getPoint ((floor x) + 1,(floor y) + 1)) - (getPoint ((floor x) + 1,(floor y) - 1)) - (getPoint ((floor x) - 1,(floor y) + 1)) + (getPoint ((floor x) - 1,(floor y) - 1)) ) / (4)
-		dxy01 = ( (getPoint ((floor x) + 1,(floor y) + 2)) - (getPoint ((floor x) + 1,(floor y) )) - (getPoint ((floor x) - 1,(floor y) + 2)) + (getPoint ((floor x) - 1,(floor y) )) ) / (4)
-		dxy10 = ( (getPoint ((floor x) + 2,(floor y) + 1)) - (getPoint ((floor x) + 2,(floor y) - 1)) - (getPoint ((floor x) ,(floor y) + 1)) + (getPoint ((floor x) ,(floor y) - 1)) ) / (4)
-		dxy11 = ( (getPoint ((floor x) + 2,(floor y) + 2)) - (getPoint ((floor x) + 2,(floor y) )) - (getPoint ((floor x) ,(floor y) + 2)) + (getPoint ((floor x) ,(floor y) )) ) / (4) --}
-		alpha = M.fromLists [ [p00],[p10],[p01],[p11],[dx00],[dx10],[dx01],[dx11],[dy00],[dy10],[dy01],[dy11],[dxy00],[dxy10],[dxy01],[dxy11] ]
-		c = multStd bicubeMatrix alpha
-		a00 = M.getElem 1 1 c
-		a10 = M.getElem 2 1 c
-		a20 = M.getElem 3 1 c
-		a30 = M.getElem 4 1 c
-		a01 = M.getElem 5 1 c
-		a11 = M.getElem 6 1 c
-		a21 = M.getElem 7 1 c
-		a31 = M.getElem 8 1 c
-		a02 = M.getElem 9 1 c
-		a12 = M.getElem 10 1 c
-		a22 = M.getElem 11 1 c
-		a32 = M.getElem 12 1 c
-		a03 = M.getElem 13 1 c
-		a13 = M.getElem 14 1 c
-		a23 = M.getElem 15 1 c
-		a33 = M.getElem 16 1 c
-		
