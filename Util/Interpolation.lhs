@@ -21,6 +21,8 @@ module Util.Interpolation
 ,spline2ToPoly
 ,spline2Construct
 ,bicubicSpline
+,bigBicubicSpline
+,evalSpline2
 )where
 
 import Util.Base
@@ -388,7 +390,7 @@ a_00 a_10
 
 Bilinear
 \begin{code}
-biLinear :: RealFrac a => Array (Int,Int) a -> (a,a) -> Poly2 a
+biLinear :: (RealFrac a,Ix b,Integral b,Enum b) => Array (b,b) a -> (a,a) -> Poly2 a
 biLinear arr (x,y) = Poly2 [[a00,a01],[a10,a11]]
 	where
 		getPoint (u,v) = if and [ n_ <= u , u <= n' , m_ <= v , v <= m' ] then arr V.! (u,v) else 0
@@ -443,7 +445,7 @@ Based on http://en.wikipedia.org/wiki/Bicubic_interpolation
 
 \begin{code}
 --We assume 1 between each point
-biCubic :: RealFrac a => Array (Int,Int) a -> (a,a) -> Poly2 a
+biCubic :: (RealFrac a,Ix b,Integral b,Enum b) => V.Array (b,b) a -> (a,a) -> Poly2 a
 biCubic arr (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,a23],[a30,a31,a32,a33]]
 	where
 		getPoint (u,v) = if and [ n_ <= u , u <= n' , m_ <= v , v <= m' ] then arr V.! (u,v) else 0
@@ -632,17 +634,35 @@ evalSpline2 s x = foldr f mzero s
 spline2ToPoly :: MonadPlus m => Spline2 a -> (a,a) -> m (Poly2 a)
 spline2ToPoly s x = foldr (\(test,p) y -> if test x then y `mplus` (return p) else y ) mzero s
 {- --}
-spline2Construct :: RealFrac a => (Array (Int,Int) a -> (a,a) -> Poly2 a) -> Array (Int,Int) a -> Spline2 a
-spline2Construct f arr = foldl' g [] ([n_..(n' - 1)] :: [Int] )
+spline2Construct :: (RealFrac a,Ix b,Integral b,Enum b) => (Array (b,b) a -> (a,a) -> Poly2 a) -> Array (b,b) a -> Spline2 a
+spline2Construct f arr = foldl' g [] [n_..(n' - 1)]
 	where 
 		((n_,m_),(n',m')) = V.bounds arr
 		--g :: Spline2 a -> Int -> Spline2 a
-		g list' n = foldl' (h n) list' ([m_..(m' - 1)] :: [Int] )
+		g list' n = foldl' (h n) list' [m_..(m' - 1)]
 		--h  :: Int -> Spline2 a -> Int -> Spline2 a
 		h n list m = ( (\(a,b) -> and [ (fromIntegral n) <= a , a <= (fromIntegral (n+1)) , (fromIntegral m) <=  b ,  b <= (fromIntegral (m+1)) ] )   , f arr ( fromIntegral n, fromIntegral m)) : list
 
-bicubicSpline :: RealFrac a =>  Array (Int,Int) a -> Spline2 a
+bicubicSpline :: (RealFrac a,Ix b,Integral b,Enum b) =>  Array (b,b) a -> Spline2 a
 bicubicSpline = spline2Construct biCubic
+
+embigginArray1 :: (Num a,Ix b,Integral b,Enum b) => Array (b,b) a -> Array (b,b) a
+embigginArray1 arr = array ((n_,m_),(n',m')) [ ((x,y) , f (x,y)  ) |  x <- [n_..n'], y <- [m_..m'] ]
+	where 
+		((n_',m_'),(n'',m'')) = V.bounds arr
+		n_ = n_' - 1
+		m_ = m_' - 1
+		n' = n'' + 1
+		m' = m'' + 1
+		f(u,v) = 
+			if and [n_' <= u , u <= n'' , m_' <= v , v <= m'' ]
+				then arr V.! (u,v)
+				else 0
+--
+
+bigBicubicSpline :: (RealFrac a,Ix b,Integral b,Enum b) =>  Array (b,b) a -> Spline2 a
+bigBicubicSpline = (spline2Construct biCubic) . embigginArray1
+
 
 \end{code}
 

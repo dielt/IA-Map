@@ -4,12 +4,15 @@ module Map where
 
 
 import Util.Base
+import Util.Interpolation
 
-import Data.Vector as V hiding (empty,elem,map,foldl',foldr)
-import Data.Array.Repa hiding (map,foldl',foldr)
+import qualified Data.Array.Unboxed as V 
+import qualified Data.Array.Repa as R 
 import Data.Array.Repa.IO.BMP
 import Data.HashMap.Strict hiding (map,foldl',null,foldr)
 import Data.List (nub,foldl')
+import qualified Data.Vector.Unboxed as U 
+import Data.Maybe
 
 
 \end{code}
@@ -92,14 +95,14 @@ directionStrings d = case d of
 	South -> ["s","S","south","South"]
 	East  -> ["e","E","east","East"]
 	West -> ["w","W","west","West"]
-	NorthWest -> ["nw","Nw","nW","Northwest","NorthWest","northWest","northwest"]
-	NorthEast -> []
-	SouthWest -> []
-	SouthEast -> []
-	Up -> []
-	Down -> []
-	In -> []
-	Out -> []
+	NorthWest -> ["nw","Nw","nW","NW","Northwest","NorthWest","northWest","northwest"]
+	NorthEast -> ["ne","Ne","nE","NE","Northeast","NorthEast","northEast","northest"]
+	SouthWest -> ["sw","Sw","sW","SW","Sorthwest","SorthWest","sorthWest","sorthwest"]
+	SouthEast -> ["se","Se","sE","SE","Sortheast","SorthEast","sorthEast","sorthest"]
+	Up -> ["u","U","up","Up"]
+	Down -> ["d","D","down","Down"]
+	In -> ["in","In"]
+	Out -> ["out","Out"]
 
 --
 
@@ -121,17 +124,61 @@ cardinal2Vec d = case d of
 
 
 \begin{code}
-
-flatArrayToMap :: V.Vector ( V.Vector (Room,[Direction])) -> Map
-flatArrayToMap arr = if V.null arr then empty else
-	foldl' f empty [0..n]
+--I'm not sure why this needs to be Integer instead of Int
+flatArrayToMap :: V.Array (Integer,Integer) (Room,[Direction]) -> Map
+flatArrayToMap arr = foldl' f empty [n_..n'] 
 		where
-			getRoom (u,v) = ( arr V.! (fromIntegral u) ) V.! (fromIntegral v)
-			n = fromIntegral $ (V.length arr) - 1
-			f hmp' x' = foldl' (g m x') hmp' [0..m]
-				where m = fromIntegral $ (V.length (arr V.! (fromIntegral x'))) - 1
-			g m x hmp y = insert (name r) (addSynonyms (map (h m x y) dirs) r) hmp
+			getRoom (u,v) = arr V.! ((fromIntegral u),(fromIntegral v))
+			((n_,n'),(m_,m')) = V.bounds arr
+			f hmp' x' = foldl' (g x') hmp' [m_..m']
+			g x hmp y = insert (name r) (addSynonyms (map (h x y) dirs) r) hmp
 				where (r,dirs) = getRoom (x,y)
-			h m x y dir = Token ( name . fst . getRoom $ addTuple (x,y) (cardinal2Vec dir) , directionStrings dir)
+			h x y dir = Token ( name . fst . getRoom $ addTuple (x,y) (cardinal2Vec dir) , directionStrings dir)
+--
+
 
 \end{code}
+
+
+\begin{code}
+
+arrayMap :: (V.Ix a,Enum a, Num a) =>  (b -> c) -> V.Array (a,a) b -> V.Array (a,a) c
+arrayMap f arr = V.array ((n_,m_),(n',m')) [((x,y),f (arr V.! (x,y))) | x <- [n_..(n')], y <- [m_..(m')] ]
+	where	
+		((n_,m_),(n',m')) = V.bounds arr
+
+seedToRandArray ::  Integer -> ((Int,Int),(Int,Int)) -> Int -> V.Array (Int,Int) Int
+seedToRandArray seed ((x_,y_),(x',y')) h' = V.array ((x_,y_),(x',y')) [ ((x,y),simpleHashList [x,y,fromIntegral seed] h' ) | x <-[x_..(x')], y <-[y_..(y')] ]
+
+fromIntegralArray :: (V.Ix c,Num c,Enum c,Num b,Integral a) => V.Array (c,c) a -> V.Array (c,c) b
+fromIntegralArray = arrayMap fromIntegral
+
+
+--note we assume n_ and m_ are both 0
+embiggenArray :: V.Array (Int,Int) Int -> Int ->  V.Array (Int,Int) Int
+embiggenArray arr scale =  V.array ((n_,m_),(n',m')) [ ((x,y) , f (x,y)  ) |  x <- [n_..n'], y <- [m_..m'] ]
+	where	
+		((n_,m_),(n'',m'')) = V.bounds arr
+		n' = (n'')*scale + scale
+		m' = (m'')*scale + scale
+		splne = bigBicubicSpline $ fromIntegralArray arr
+		f (u,v) = round . fromJust $ evalSpline2 splne ((fromIntegral u) / (fromIntegral scale)  , ( fromIntegral v) / (fromIntegral scale)  )
+--
+testArray :: Integer -> V.Array (Int,Int) Double
+testArray seed = fromIntegralArray $ seedToRandArray seed ((0,0),(10,10)) 100 
+
+--testArray2 :: Integer -> V.Array (Int,Int) Int
+testArray2 seed = embiggenArray ( seedToRandArray seed ((0,0),(10,10)) 100 ) 10
+
+arrayToRepa :: (U.Unbox a) => V.Array (Int,Int) a -> R.Array R.U R.DIM2 a
+arrayToRepa arr = R.fromUnboxed (R.Z R.:. (n' -  1 ) R.:.(m' -  1)) (U.fromList list)
+	where	
+		((n_,m_),(n',m')) = V.bounds arr
+		list = foldr (\a b -> foldr (\x y -> (arr V.! (a,x)) : y ) b [0..m'] ) [] [0..n']
+
+
+
+
+\end{code}
+
+
