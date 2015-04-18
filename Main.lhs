@@ -31,10 +31,8 @@ main = do
 	hFlush stdout
 	x <- getLine
 	let y = read x :: Integer
-	let z = testArray2 y
-	putStrLn (show $ testArray2 y )
-	writeFile "output.txt" (show $ z)
-	writeMatrixToTextFile "output2.txt" $ arrayToRepa z
+	let z = testArray3 y
+	writeFile "output.pgm" $ arrayToPBM z
 	
 	
 	

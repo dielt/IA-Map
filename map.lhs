@@ -154,6 +154,8 @@ fromIntegralArray :: (V.Ix c,Num c,Enum c,Num b,Integral a) => V.Array (c,c) a -
 fromIntegralArray = arrayMap fromIntegral
 
 
+clampArray (a,b) = arrayMap (\x -> if x < a then a else if x > b then b else x)
+
 --note we assume n_ and m_ are both 0
 embiggenArray :: V.Array (Int,Int) Int -> Int ->  V.Array (Int,Int) Int
 embiggenArray arr scale =  V.array ((n_,m_),(n',m')) [ ((x,y) , f (x,y)  ) |  x <- [n_..n'], y <- [m_..m'] ]
@@ -168,7 +170,12 @@ testArray :: Integer -> V.Array (Int,Int) Double
 testArray seed = fromIntegralArray $ seedToRandArray seed ((0,0),(10,10)) 100 
 
 --testArray2 :: Integer -> V.Array (Int,Int) Int
-testArray2 seed = embiggenArray ( seedToRandArray seed ((0,0),(10,10)) 100 ) 10
+testArray2 seed = clampArray (0,100) $ embiggenArray ( seedToRandArray seed ((0,0),(5,5)) 100 ) 50
+
+testArray3 seed = clampArray (0,25) . arrayMap (\x -> x - 15) $ embiggenArray (trimArray2 . trimArray1 . arrayMap (\x -> x + 10) $ seedToRandArray seed ((0,0),(5,5)) 25 ) 60
+--testArray3 seed =  arrayMap (\x -> x + 1) $ clampArray (0,1) ( trimArray2 . trimArray1 . arrayMap (\x -> x + 1) $ seedToRandArray seed ((0,0),(100,100)) 1 )
+
+
 
 arrayToRepa :: (U.Unbox a) => V.Array (Int,Int) a -> R.Array R.U R.DIM2 a
 arrayToRepa arr = R.fromUnboxed (R.Z R.:. (n' -  1 ) R.:.(m' -  1)) (U.fromList list)
@@ -176,8 +183,40 @@ arrayToRepa arr = R.fromUnboxed (R.Z R.:. (n' -  1 ) R.:.(m' -  1)) (U.fromList 
 		((n_,m_),(n',m')) = V.bounds arr
 		list = foldr (\a b -> foldr (\x y -> (arr V.! (a,x)) : y ) b [0..m'] ) [] [0..n']
 
+arrayToList :: V.Array (Int,Int) a -> [[a]]
+arrayToList arr = foldr f [] [m_..m']
+	where
+		((n_,m_),(n',m')) = V.bounds arr
+		f m l1 = (foldr (g m) [] [n_..n']) : l1
+		g m n l2 = (arr V.! (n,m)) : l2
+--
 
+arrayToString :: Show a => V.Array (Int,Int) a -> String
+arrayToString =  unlines . map unwords . arrayToList . arrayMap show
 
+arrayToPBM :: (Show a,Num a,Ord a) => V.Array (Int,Int) a -> String
+arrayToPBM arr = "P2\n" ++ dim ++ "\n" ++ hight ++ "\n" ++ arrList
+	where
+		((n_,m_),(n',m')) = V.bounds arr
+		dim = show (n' - n_ + 1) ++ " " ++ show (m' - m_ + 1)
+		hight = show . maximum . concat . arrayToList $ arr
+		arrList = arrayToString arr
+--
+
+trimArray1 :: Num a => V.Array (Int,Int) a -> V.Array (Int,Int) a
+trimArray1 arr = ((((arr V.// [((x,m_),0)| x <- [n_..n']  ]) V.// [((x,m'),0)| x <- [n_..n']  ]) V.// [((n_,y),0)| y <- [m_..m']  ]) V.// [((n',y),0)| y <- [m_..m']  ])
+	where
+		((n_,m_),(n',m')) = V.bounds arr
+
+trimArray2 :: Num a => V.Array (Int,Int) a -> V.Array (Int,Int) a
+trimArray2 arr = arr V.//  [((x,y),0) | x <- [n_..n'] , y <- [m_..m'] ,  ( ((fromIntegral x) - xc)^2 / a^2 ) + ( ((fromIntegral y) - yc)^2 / b^2  ) > 1  ]
+	where
+		((n_,m_),(n',m')) = V.bounds arr
+		xc = (fromIntegral n_) + a
+		yc = (fromIntegral m_) + b
+		a = ( fromIntegral (n' - n_) ) / 2
+		b = ( fromIntegral (m' - m_) ) / 2
+		
 
 \end{code}
 
