@@ -17,6 +17,10 @@ module Util.Interpolation
 ,trimPoly2
 ,biLinear
 ,biCubic
+,Spline2
+,spline2ToPoly
+,spline2Construct
+,bicubicSpline
 )where
 
 import Util.Base
@@ -480,7 +484,7 @@ biCubic arr (x,y) = Poly2 [[a00,a01,a02,a03],[a10,a11,a12,a13],[a20,a21,a22,a23]
 		dxy01 = (p12 - p10 - p_12 + p_10)/4
 		dxy10 = (p21 - p2_1 - p01 + p0_1)/4
 		dxy11 = (p22 - p20 - p02 + p00)/4
-		--from Maple
+		--Solutions from Maple
 		a00 = -(-dxy00*x0^2*x1^2*y0^2*y1^2+dxy00*x0^2*x1^2*y0*y1^3+dxy00*x0*x1^3*y0^2*y1^2-dxy00*x0*x1^3*y0*y1^3-dxy01*x0^2*x1^2*y0^3*y1+dxy01*x0^2*x1^2*y0^2*y1^2+dxy01*x0*x1^3*y0^3*y1-dxy01*x0*x1^3*y0^2*y1^2-dxy10*x0^3*x1*y0^2*y1^2+dxy10*x0^3*x1*y0*y1^3+dxy10*x0^2*x1^2*y0^2*y1^2-dxy10*x0^2*x1^2*y0*y1^3-dxy11*x0^3*x1*y0^3*y1+dxy11*x0^3*x1*y0^2*y1^2+dxy11*x0^2*x1^2*y0^3*y1-dxy11*x0^2*x1^2*y0^2*y1^2+3*dx00*x0^2*x1^2*y0*y1^2-dx00*x0^2*x1^2*y1^3-3*dx00*x0*x1^3*y0*y1^2+dx00*x0*x1^3*y1^3+dx01*x0^2*x1^2*y0^3-3*dx01*x0^2*x1^2*y0^2*y1-dx01*x0*x1^3*y0^3+3*dx01*x0*x1^3*y0^2*y1+3*dx10*x0^3*x1*y0*y1^2-dx10*x0^3*x1*y1^3-3*dx10*x0^2*x1^2*y0*y1^2+dx10*x0^2*x1^2*y1^3+dx11*x0^3*x1*y0^3-3*dx11*x0^3*x1*y0^2*y1-dx11*x0^2*x1^2*y0^3+3*dx11*x0^2*x1^2*y0^2*y1+3*dy00*x0*x1^2*y0^2*y1^2-3*dy00*x0*x1^2*y0*y1^3-dy00*x1^3*y0^2*y1^2+dy00*x1^3*y0*y1^3+3*dy01*x0*x1^2*y0^3*y1-3*dy01*x0*x1^2*y0^2*y1^2-dy01*x1^3*y0^3*y1+dy01*x1^3*y0^2*y1^2+dy10*x0^3*y0^2*y1^2-dy10*x0^3*y0*y1^3-3*dy10*x0^2*x1*y0^2*y1^2+3*dy10*x0^2*x1*y0*y1^3+dy11*x0^3*y0^3*y1-dy11*x0^3*y0^2*y1^2-3*dy11*x0^2*x1*y0^3*y1+3*dy11*x0^2*x1*y0^2*y1^2-9*p00*x0*x1^2*y0*y1^2+3*p00*x0*x1^2*y1^3+3*p00*x1^3*y0*y1^2-p00*x1^3*y1^3-3*p01*x0*x1^2*y0^3+9*p01*x0*x1^2*y0^2*y1+p01*x1^3*y0^3-3*p01*x1^3*y0^2*y1-3*p10*x0^3*y0*y1^2+p10*x0^3*y1^3+9*p10*x0^2*x1*y0*y1^2-3*p10*x0^2*x1*y1^3-p11*x0^3*y0^3+3*p11*x0^3*y0^2*y1+3*p11*x0^2*x1*y0^3-9*p11*x0^2*x1*y0^2*y1)/((x0-x1)*(x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3))
 		a01 = (-2*dxy00*x0^2*x1^2*y0^2*y1+dxy00*x0^2*x1^2*y0*y1^2+dxy00*x0^2*x1^2*y1^3+2*dxy00*x0*x1^3*y0^2*y1-dxy00*x0*x1^3*y0*y1^2-dxy00*x0*x1^3*y1^3-dxy01*x0^2*x1^2*y0^3-dxy01*x0^2*x1^2*y0^2*y1+2*dxy01*x0^2*x1^2*y0*y1^2+dxy01*x0*x1^3*y0^3+dxy01*x0*x1^3*y0^2*y1-2*dxy01*x0*x1^3*y0*y1^2-2*dxy10*x0^3*x1*y0^2*y1+dxy10*x0^3*x1*y0*y1^2+dxy10*x0^3*x1*y1^3+2*dxy10*x0^2*x1^2*y0^2*y1-dxy10*x0^2*x1^2*y0*y1^2-dxy10*x0^2*x1^2*y1^3-dxy11*x0^3*x1*y0^3-dxy11*x0^3*x1*y0^2*y1+2*dxy11*x0^3*x1*y0*y1^2+dxy11*x0^2*x1^2*y0^3+dxy11*x0^2*x1^2*y0^2*y1-2*dxy11*x0^2*x1^2*y0*y1^2+6*dx00*x0^2*x1^2*y0*y1-6*dx00*x0*x1^3*y0*y1-6*dx01*x0^2*x1^2*y0*y1+6*dx01*x0*x1^3*y0*y1+6*dx10*x0^3*x1*y0*y1-6*dx10*x0^2*x1^2*y0*y1-6*dx11*x0^3*x1*y0*y1+6*dx11*x0^2*x1^2*y0*y1+6*dy00*x0*x1^2*y0^2*y1-3*dy00*x0*x1^2*y0*y1^2-3*dy00*x0*x1^2*y1^3-2*dy00*x1^3*y0^2*y1+dy00*x1^3*y0*y1^2+dy00*x1^3*y1^3+3*dy01*x0*x1^2*y0^3+3*dy01*x0*x1^2*y0^2*y1-6*dy01*x0*x1^2*y0*y1^2-dy01*x1^3*y0^3-dy01*x1^3*y0^2*y1+2*dy01*x1^3*y0*y1^2+2*dy10*x0^3*y0^2*y1-dy10*x0^3*y0*y1^2-dy10*x0^3*y1^3-6*dy10*x0^2*x1*y0^2*y1+3*dy10*x0^2*x1*y0*y1^2+3*dy10*x0^2*x1*y1^3+dy11*x0^3*y0^3+dy11*x0^3*y0^2*y1-2*dy11*x0^3*y0*y1^2-3*dy11*x0^2*x1*y0^3-3*dy11*x0^2*x1*y0^2*y1+6*dy11*x0^2*x1*y0*y1^2-18*p00*x0*x1^2*y0*y1+6*p00*x1^3*y0*y1+18*p01*x0*x1^2*y0*y1-6*p01*x1^3*y0*y1-6*p10*x0^3*y0*y1+18*p10*x0^2*x1*y0*y1+6*p11*x0^3*y0*y1-18*p11*x0^2*x1*y0*y1)/((x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3)*(x0-x1))
 		a02 = -(-dxy00*x0^2*x1^2*y0^2-dxy00*x0^2*x1^2*y0*y1+2*dxy00*x0^2*x1^2*y1^2+dxy00*x0*x1^3*y0^2+dxy00*x0*x1^3*y0*y1-2*dxy00*x0*x1^3*y1^2-2*dxy01*x0^2*x1^2*y0^2+dxy01*x0^2*x1^2*y0*y1+dxy01*x0^2*x1^2*y1^2+2*dxy01*x0*x1^3*y0^2-dxy01*x0*x1^3*y0*y1-dxy01*x0*x1^3*y1^2-dxy10*x0^3*x1*y0^2-dxy10*x0^3*x1*y0*y1+2*dxy10*x0^3*x1*y1^2+dxy10*x0^2*x1^2*y0^2+dxy10*x0^2*x1^2*y0*y1-2*dxy10*x0^2*x1^2*y1^2-2*dxy11*x0^3*x1*y0^2+dxy11*x0^3*x1*y0*y1+dxy11*x0^3*x1*y1^2+2*dxy11*x0^2*x1^2*y0^2-dxy11*x0^2*x1^2*y0*y1-dxy11*x0^2*x1^2*y1^2+3*dx00*x0^2*x1^2*y0+3*dx00*x0^2*x1^2*y1-3*dx00*x0*x1^3*y0-3*dx00*x0*x1^3*y1-3*dx01*x0^2*x1^2*y0-3*dx01*x0^2*x1^2*y1+3*dx01*x0*x1^3*y0+3*dx01*x0*x1^3*y1+3*dx10*x0^3*x1*y0+3*dx10*x0^3*x1*y1-3*dx10*x0^2*x1^2*y0-3*dx10*x0^2*x1^2*y1-3*dx11*x0^3*x1*y0-3*dx11*x0^3*x1*y1+3*dx11*x0^2*x1^2*y0+3*dx11*x0^2*x1^2*y1+3*dy00*x0*x1^2*y0^2+3*dy00*x0*x1^2*y0*y1-6*dy00*x0*x1^2*y1^2-dy00*x1^3*y0^2-dy00*x1^3*y0*y1+2*dy00*x1^3*y1^2+6*dy01*x0*x1^2*y0^2-3*dy01*x0*x1^2*y0*y1-3*dy01*x0*x1^2*y1^2-2*dy01*x1^3*y0^2+dy01*x1^3*y0*y1+dy01*x1^3*y1^2+dy10*x0^3*y0^2+dy10*x0^3*y0*y1-2*dy10*x0^3*y1^2-3*dy10*x0^2*x1*y0^2-3*dy10*x0^2*x1*y0*y1+6*dy10*x0^2*x1*y1^2+2*dy11*x0^3*y0^2-dy11*x0^3*y0*y1-dy11*x0^3*y1^2-6*dy11*x0^2*x1*y0^2+3*dy11*x0^2*x1*y0*y1+3*dy11*x0^2*x1*y1^2-9*p00*x0*x1^2*y0-9*p00*x0*x1^2*y1+3*p00*x1^3*y0+3*p00*x1^3*y1+9*p01*x0*x1^2*y0+9*p01*x0*x1^2*y1-3*p01*x1^3*y0-3*p01*x1^3*y1-3*p10*x0^3*y0-3*p10*x0^3*y1+9*p10*x0^2*x1*y0+9*p10*x0^2*x1*y1+3*p11*x0^3*y0+3*p11*x0^3*y1-9*p11*x0^2*x1*y0-9*p11*x0^2*x1*y1)/((y0-y1)*(x0^3*y0^2-2*x0^3*y0*y1+x0^3*y1^2-3*x0^2*x1*y0^2+6*x0^2*x1*y0*y1-3*x0^2*x1*y1^2+3*x0*x1^2*y0^2-6*x0*x1^2*y0*y1+3*x0*x1^2*y1^2-x1^3*y0^2+2*x1^3*y0*y1-x1^3*y1^2))
@@ -580,7 +584,7 @@ with params x0,x1,y0,y1,p00,p10,p01,p11,dx00,dx10,dx01,dx11,dy00,dy10,dy01,dy11,
 To be Solved for
 {a00,a10,a20,a30 ,a01 ,a11,a21,a31 ,a02 ,a12 ,a22 ,a32 ,a03 ,a13 ,a23 ,a33 }
 
-Giving
+Giving, by maple,
 
 a00 = -(-dxy00*x0^2*x1^2*y0^2*y1^2+dxy00*x0^2*x1^2*y0*y1^3+dxy00*x0*x1^3*y0^2*y1^2-dxy00*x0*x1^3*y0*y1^3-dxy01*x0^2*x1^2*y0^3*y1+dxy01*x0^2*x1^2*y0^2*y1^2+dxy01*x0*x1^3*y0^3*y1-dxy01*x0*x1^3*y0^2*y1^2-dxy10*x0^3*x1*y0^2*y1^2+dxy10*x0^3*x1*y0*y1^3+dxy10*x0^2*x1^2*y0^2*y1^2-dxy10*x0^2*x1^2*y0*y1^3-dxy11*x0^3*x1*y0^3*y1+dxy11*x0^3*x1*y0^2*y1^2+dxy11*x0^2*x1^2*y0^3*y1-dxy11*x0^2*x1^2*y0^2*y1^2+3*dx00*x0^2*x1^2*y0*y1^2-dx00*x0^2*x1^2*y1^3-3*dx00*x0*x1^3*y0*y1^2+dx00*x0*x1^3*y1^3+dx01*x0^2*x1^2*y0^3-3*dx01*x0^2*x1^2*y0^2*y1-dx01*x0*x1^3*y0^3+3*dx01*x0*x1^3*y0^2*y1+3*dx10*x0^3*x1*y0*y1^2-dx10*x0^3*x1*y1^3-3*dx10*x0^2*x1^2*y0*y1^2+dx10*x0^2*x1^2*y1^3+dx11*x0^3*x1*y0^3-3*dx11*x0^3*x1*y0^2*y1-dx11*x0^2*x1^2*y0^3+3*dx11*x0^2*x1^2*y0^2*y1+3*dy00*x0*x1^2*y0^2*y1^2-3*dy00*x0*x1^2*y0*y1^3-dy00*x1^3*y0^2*y1^2+dy00*x1^3*y0*y1^3+3*dy01*x0*x1^2*y0^3*y1-3*dy01*x0*x1^2*y0^2*y1^2-dy01*x1^3*y0^3*y1+dy01*x1^3*y0^2*y1^2+dy10*x0^3*y0^2*y1^2-dy10*x0^3*y0*y1^3-3*dy10*x0^2*x1*y0^2*y1^2+3*dy10*x0^2*x1*y0*y1^3+dy11*x0^3*y0^3*y1-dy11*x0^3*y0^2*y1^2-3*dy11*x0^2*x1*y0^3*y1+3*dy11*x0^2*x1*y0^2*y1^2-9*p00*x0*x1^2*y0*y1^2+3*p00*x0*x1^2*y1^3+3*p00*x1^3*y0*y1^2-p00*x1^3*y1^3-3*p01*x0*x1^2*y0^3+9*p01*x0*x1^2*y0^2*y1+p01*x1^3*y0^3-3*p01*x1^3*y0^2*y1-3*p10*x0^3*y0*y1^2+p10*x0^3*y1^3+9*p10*x0^2*x1*y0*y1^2-3*p10*x0^2*x1*y1^3-p11*x0^3*y0^3+3*p11*x0^3*y0^2*y1+3*p11*x0^2*x1*y0^3-9*p11*x0^2*x1*y0^2*y1)/((x0-x1)*(x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3))
 a01 = (-2*dxy00*x0^2*x1^2*y0^2*y1+dxy00*x0^2*x1^2*y0*y1^2+dxy00*x0^2*x1^2*y1^3+2*dxy00*x0*x1^3*y0^2*y1-dxy00*x0*x1^3*y0*y1^2-dxy00*x0*x1^3*y1^3-dxy01*x0^2*x1^2*y0^3-dxy01*x0^2*x1^2*y0^2*y1+2*dxy01*x0^2*x1^2*y0*y1^2+dxy01*x0*x1^3*y0^3+dxy01*x0*x1^3*y0^2*y1-2*dxy01*x0*x1^3*y0*y1^2-2*dxy10*x0^3*x1*y0^2*y1+dxy10*x0^3*x1*y0*y1^2+dxy10*x0^3*x1*y1^3+2*dxy10*x0^2*x1^2*y0^2*y1-dxy10*x0^2*x1^2*y0*y1^2-dxy10*x0^2*x1^2*y1^3-dxy11*x0^3*x1*y0^3-dxy11*x0^3*x1*y0^2*y1+2*dxy11*x0^3*x1*y0*y1^2+dxy11*x0^2*x1^2*y0^3+dxy11*x0^2*x1^2*y0^2*y1-2*dxy11*x0^2*x1^2*y0*y1^2+6*dx00*x0^2*x1^2*y0*y1-6*dx00*x0*x1^3*y0*y1-6*dx01*x0^2*x1^2*y0*y1+6*dx01*x0*x1^3*y0*y1+6*dx10*x0^3*x1*y0*y1-6*dx10*x0^2*x1^2*y0*y1-6*dx11*x0^3*x1*y0*y1+6*dx11*x0^2*x1^2*y0*y1+6*dy00*x0*x1^2*y0^2*y1-3*dy00*x0*x1^2*y0*y1^2-3*dy00*x0*x1^2*y1^3-2*dy00*x1^3*y0^2*y1+dy00*x1^3*y0*y1^2+dy00*x1^3*y1^3+3*dy01*x0*x1^2*y0^3+3*dy01*x0*x1^2*y0^2*y1-6*dy01*x0*x1^2*y0*y1^2-dy01*x1^3*y0^3-dy01*x1^3*y0^2*y1+2*dy01*x1^3*y0*y1^2+2*dy10*x0^3*y0^2*y1-dy10*x0^3*y0*y1^2-dy10*x0^3*y1^3-6*dy10*x0^2*x1*y0^2*y1+3*dy10*x0^2*x1*y0*y1^2+3*dy10*x0^2*x1*y1^3+dy11*x0^3*y0^3+dy11*x0^3*y0^2*y1-2*dy11*x0^3*y0*y1^2-3*dy11*x0^2*x1*y0^3-3*dy11*x0^2*x1*y0^2*y1+6*dy11*x0^2*x1*y0*y1^2-18*p00*x0*x1^2*y0*y1+6*p00*x1^3*y0*y1+18*p01*x0*x1^2*y0*y1-6*p01*x1^3*y0*y1-6*p10*x0^3*y0*y1+18*p10*x0^2*x1*y0*y1+6*p11*x0^3*y0*y1-18*p11*x0^2*x1*y0*y1)/((x0^2*y0^3-3*x0^2*y0^2*y1+3*x0^2*y0*y1^2-x0^2*y1^3-2*x0*x1*y0^3+6*x0*x1*y0^2*y1-6*x0*x1*y0*y1^2+2*x0*x1*y1^3+x1^2*y0^3-3*x1^2*y0^2*y1+3*x1^2*y0*y1^2-x1^2*y1^3)*(x0-x1))
@@ -612,6 +616,33 @@ a33 = -(-dxy00*x0*y0+dxy00*x0*y1+dxy00*x1*y0-dxy00*x1*y1-dxy01*x0*y0+dxy01*x0*y1
 \begin{code}
 
 
+--the function returns true if a is in the domain of the associated poly
+--i.e., true if we can use the poly to evalute the spline
+type Spline2 a = [ ((a,a) -> Bool,Poly2 a) ]
+
+
+evalSpline2 :: (MonadPlus m, Num a, Eq a) => Spline2 a -> (a,a) -> m a
+evalSpline2 s x = foldr f mzero s
+	where
+		f (test,p) y = 
+			if test x 
+				then y `mplus` (return $ evalPoly2 p x) 
+				else y
+
+spline2ToPoly :: MonadPlus m => Spline2 a -> (a,a) -> m (Poly2 a)
+spline2ToPoly s x = foldr (\(test,p) y -> if test x then y `mplus` (return p) else y ) mzero s
+{- --}
+spline2Construct :: RealFrac a => (Array (Int,Int) a -> (a,a) -> Poly2 a) -> Array (Int,Int) a -> Spline2 a
+spline2Construct f arr = foldl' g [] ([n_..(n' - 1)] :: [Int] )
+	where 
+		((n_,m_),(n',m')) = V.bounds arr
+		--g :: Spline2 a -> Int -> Spline2 a
+		g list' n = foldl' (h n) list' ([m_..(m' - 1)] :: [Int] )
+		--h  :: Int -> Spline2 a -> Int -> Spline2 a
+		h n list m = ( (\(a,b) -> and [ (fromIntegral n) <= a , a <= (fromIntegral (n+1)) , (fromIntegral m) <=  b ,  b <= (fromIntegral (m+1)) ] )   , f arr ( fromIntegral n, fromIntegral m)) : list
+
+bicubicSpline :: RealFrac a =>  Array (Int,Int) a -> Spline2 a
+bicubicSpline = spline2Construct biCubic
 
 \end{code}
 
@@ -643,15 +674,13 @@ a33 = -(-dxy00*x0*y0+dxy00*x0*y1+dxy00*x1*y0-dxy00*x1*y1-dxy01*x0*y0+dxy01*x0*y1
 
 super hacky array constructer, for when we just want to plug in values
 --topleft (y,x) indexing at 1
-\begin{code}
+
 
 listToArray21 :: [[a]] -> (Int,Int) -> Array (Int,Int) a 
 listToArray21 list (n,m) = array ((1,1),(n,m)) [ ((i,j), ( list !! (i - 1) ) !! (j - 1)  ) | i <- [1..n], j <- [1..m]  ]
 
-\end{code}
 
 --bottomleft (x,y) indexing at 0
-\begin{code}
 listToArray20 :: [[a]] -> (Int,Int) -> Array (Int,Int) a 
 listToArray20 list (n,m) = array ((0,0),(n,m)) [ ((i,j), ( (reverse list) !! j ) !! i  ) | i <- [0..n], j <- [0..m]  ]
 
@@ -678,8 +707,6 @@ testfn u = evalPoly2 ( biLinear test3 u ) u
 
 testfn2 u = evalPoly2 ( biCubic test3 u ) u
 
-
-\end{code}
 
 
 
