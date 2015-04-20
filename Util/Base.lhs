@@ -35,6 +35,12 @@ fst3 (x,_,_) = x
 snd3 (_,x,_) = x
 thd3 (_,_,x) = x
 
+
+app3 f (x,y,z) = (f x , f y , f z)
+
+dot3 :: (a -> b -> c) -> (a,a,a) -> (b,b,b) -> (c,c,c)
+dot3 f (x,y,z) (u,v,w) = (f x u , f y v , f z w)
+
 appFst f (x,y) = (f x ,y)
 appSnd f (x,y) = (x, f y)
 
@@ -209,22 +215,22 @@ instance Monoid MFalse where
 Note these hash functions are not at all garrenteed to have any nice properties, in regards to the distribution of numbers
 \begin{code}
 
-simpleHash1 x = sum ( map (x^) (take ((x `mod` 13) + 1) primes)) + foldl' (\y z -> y + foldl' (\a b -> a + b^z ) 0 l ) 0 (take ((x `mod` 7) + 1) primes)
+simpleHash1 :: Integral a => a -> a
+simpleHash1 x = sum ( map (x^) (take (fromIntegral $ (x `mod` 13) + 1) primes)) + foldl' (\y z -> y + foldl' (\a b -> a + b^z ) 0 l ) 0 (take ( fromIntegral $ (x `mod` 7) + 1) primes)
 	where l = (map (\a -> if a < 0 then a^2 else a) [(x - 10)..(x)])
 
-simpleHash :: Int -> Int -> Int
-simpleHash x r = ( (randomVals !! (x^5 `mod` 200) )+( (randomVals !! (x^2 `mod` 200) ) + simpleHash1 ( (randomVals !! (x^3 `mod` 200) ) + x * ( (simpleHash1 x) `mod` (r + 7) )))) `mod` r
 
-		
-		
-		
-		
+simpleHash :: Integral a => a -> a -> a
+simpleHash x r = ( (randomVals !! (fromIntegral $ x^5 `mod` 200) )+( (randomVals !! (fromIntegral $ x^2 `mod` 200) ) + simpleHash1 ( (randomVals !! (fromIntegral $ x^3 `mod` 200) ) + x * ( (simpleHash1 x) `mod` (r + 7) )))) `mod` r
+
+
 --from random.org
+randomVals :: Num a => [a]
 randomVals = [24004,-53750,91624,-75456,72735,55191,97125,54032,-50418,96909,75604,34169,-98369,269,26464,-11127,-43890,-87904,10147,84452,58307,70985,-58964,40626,-47841,-60653,5949,95884,-89205,19815,-41635,-73069,-35471,-36051,52406,30699,20418,-32563,-83836,21416,57529,40825,-50534,3053,-71408,-55690,-16883,-596,82553,-11125,59738,-41558,11359,20723,24285,-86367,-24626,-45773,-60290,-12904,-97202,-52044,-9235,-65867,83827,30741,93542,-56142,-37966,58907,-82358,-47826,-48406,-31531,-93437,-82564,-46223,-10604,-90944,-47064,54811,68207,11020,-93973,-93557,52385,42780,-86033,25373,-19220,-59791,-91075,-76813,44626,-22723,-31659,-69648,86060,44707,53976,-9637,27690,36483,-25734,3099,95872,-46543,-43458,68681,879,-11768,12147,58683,-38319,27814,-91117,98377,-57268,-41117,42845,29051,31608,-56337,79017,-31081,72587,-56112,-52905,42384,94039,63416,20948,21711,-82247,61641,-12686,-68746,36241,93852,19659,13935,-96584,16463,15717,-93809,-27916,58326,-60303,-63261,-62583,40729,-18692,53426,71373,-82576,37777,-88555,43836,-24176,-45470,36527,-36900,-66272,-25470,-56319,40135,76581,79033,-27724,72328,68589,90846,22765,-72927,19524,-95788,31714,8371,-99996,-84982,46310,-21959,8066,-71515,17544,41609,-81798,1725,-43131,43121,-36255,-24926,-33633,-42816,-81578,43575,57262,4526,-98573,66039]
 
-simpleHashList :: [Int] -> Int -> Int
-simpleHashList [] r = 777777777 `mod` r 
-simpleHashList (x:xs) r = ( (randomVals !! ((x + 17) `mod` 200) ) + simpleHash x ( r + 7 ) + simpleHash (randomVals !! (x `mod` 200) ) r^3 + (simpleHashList xs (r + 3)^3)  ) `mod` r
+simpleHashList :: Integral a => [a] -> a -> a
+simpleHashList [] r = 77777777777 `mod` r 
+simpleHashList (x:xs) r = ( (randomVals !! (fromIntegral $ (x + 17) `mod` 200) ) + simpleHash x ( r + 7 ) + simpleHash (randomVals !! (fromIntegral $ x `mod` 200) ) r^3 + (simpleHashList xs (r + 3)^3)  ) `mod` r
 
 
 \end{code}
